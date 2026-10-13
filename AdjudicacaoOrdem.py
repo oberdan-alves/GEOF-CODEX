@@ -24,6 +24,9 @@ cotação no E-mail Cotação); aqui só é importada, não redefinida.
 
 import os
 import json
+from statistics import mean, median
+from math import isfinite
+from xml.sax.saxutils import escape
 import tkinter as tk
 from tkinter import messagebox
 
@@ -32,7 +35,7 @@ import customtkinter as ctk
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepInFrame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 
@@ -46,6 +49,210 @@ from GeradorCotacao import (
     converter_pdf_para_jpg, exibir_preview_pdf_jpg, montar_cabecalho_institucional,
 )
 from Mapa import carregar_fornecedores_completo
+
+TITULOS_PESQUISA_PADRAO = ("Média¹ Mapa GDF", "Mediana² Painel Federal")
+TEXTO_PESQUISA_PADRAO = 'Como pesquisa de preços foram consultados:\n1 - O preço médio do Mapa de Preços do GDF, conforme art. 88, inciso I e art. 90, § 1º, do Decreto 44.330/2023;\n2 - A mediana do Painel de Preços Federal no Compras.gov, conforme o art. 23, § 1º, inciso I, da Lei nº 14.133/2021 e art. 88, inciso II, do Decreto 44.330/2023;\n3 - Pesquisa direta com fornecedores, conforme art. 88, inciso IV e art. 108 do Decreto 44.330/2023.\n4 - Considerando o art. 90, § 3º do Decreto 44.330/2023 "Na impossibilidade de cumprimento do disposto no caput, deverá ser juntada aos autos comprovação e justificativa do agente responsável."\n5 - O preço de referência foi fixado com base no art. 102 Decreto 44.330/2023 "O valor de referência de cada item será o menor preço obtido após o cálculo da média e mediana final dos valores válidos contidos na pesquisa de preços."\nEm função do que se apresenta na planilha acima, das necessidades expostas no Termo de Referência e que o(s) produto(s) ofertado(s) atende(m) ao(s) requisito(s) de melhor proposta, prevista no edital referente à presente cotação, solicitamos de V.Sª o respaldo administrativo para declarar vencedora, por terem apresentado o menor preço e/ou menor prazo de entrega, a(s) seguinte(s) empresa(s) para o(s) respectivo(s) item(ns):'
+
+def numero_pesquisa(texto):
+    texto = str(texto).strip().replace(" ", "")
+    if not texto:
+        return None
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    valor = float(texto)
+    if not isfinite(valor) or valor <= 0:
+        raise ValueError("Informe um valor positivo ou deixe o campo vazio.")
+    return valor
+
+
+def formatar_pesquisa(valor):
+    return "" if valor is None else formatar_moeda(valor).replace("R$ ", "")
+
+
+def recalcular_referencias(item):
+    valores = [p["unitario"] for p in item["propostas"]]
+    valores += [v for v in item.get("pesquisas", []) if v is not None]
+    media = mean(valores) if valores else None
+    mediana = median(valores) if valores else None
+    referencia = min(media, mediana) if valores else None
+    item["referencias"] = dict(media=media, mediana=mediana, minimo=referencia,
+                               superior=referencia * 1.5 if valores else None,
+                               inferior=referencia * 0.5 if valores else None)
+
+
+def aplicar_retiradas(item, fornecedores=(), pesquisas=()):
+    removidos = set(item.get("fornecedores_retirados", [])) | set(fornecedores)
+    item["fornecedores_retirados"] = sorted(removidos)
+    item["propostas"] = [p for p in item["propostas"] if p.get("fornecedor_chave", p["fornecedor"]) not in removidos]
+    for indice in pesquisas:
+        item["pesquisas"][indice] = None
+    item["vencedor_idx"] = 0 if item["propostas"] else None
+    recalcular_referencias(item)
+
+
+def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
+    """Exporta o modelo A:M; limites em N ficam fora da área de impressão."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    if len(itens) > 12:
+        # Cada folha mantém a área exigida, sem cortar itens de cotações maiores.
+        from copy import copy
+        from tempfile import TemporaryDirectory
+        from openpyxl import load_workbook
+        wb = Workbook()
+        wb.remove(wb.active)
+        with TemporaryDirectory() as pasta:
+            for pagina, inicio in enumerate(range(0, len(itens), 12), 1):
+                arquivo = os.path.join(pasta, f"mapa{pagina}.xlsx")
+                gerar_excel_mapa_comparativo(arquivo, codigo, ano, itens[inicio:inicio+12], dados)
+                origem = load_workbook(arquivo)
+                fonte_nome = f"Valores classificados {pagina}"
+                for original in origem:
+                    destino = wb.create_sheet(f"Adjudicação {pagina}" if original.title == "Adjudicação" else fonte_nome)
+                    for linha in original:
+                        for celula in linha:
+                            valor = celula.value
+                            if isinstance(valor, str) and celula.data_type == 'f':
+                                valor = valor.replace("'Valores classificados'!", f"'{fonte_nome}'!")
+                            nova = destino.cell(celula.row, celula.column, valor)
+                            nova.font = copy(celula.font)
+                            nova.fill = copy(celula.fill)
+                            nova.border = copy(celula.border)
+                            nova.alignment = copy(celula.alignment)
+                            nova.protection = copy(celula.protection)
+                            nova.number_format = celula.number_format
+                    for area in original.merged_cells.ranges:
+                        destino.merge_cells(str(area))
+                    for chave, dim in original.row_dimensions.items():
+                        destino.row_dimensions[chave] = copy(dim)
+                    for chave, dim in original.column_dimensions.items():
+                        destino.column_dimensions[chave] = copy(dim)
+                    destino.page_setup = copy(original.page_setup)
+                    destino.sheet_properties = copy(original.sheet_properties)
+                    destino.print_area = original.print_area
+                origem.close()
+        wb.save(caminho)
+        return
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Adjudicação"
+    for linha, texto in [(1, "GOVERNO DO DISTRITO FEDERAL"),
+                         (2, "SECRETARIA DE ESTADO DE SAÚDE"),
+                         (3, "PROGRAMA DE DESCENTRALIZAÇÃO PROGRESSIVA DE AÇÕES DE SAÚDE — PDPAS"),
+                         (4, "SOLICITAÇÃO DE ADJUDICAÇÃO PARA O PEDIDO DE COTAÇÃO PDPAS"),
+                         (5, f"{codigo}/{ano}"), (6, dados.get('objeto', '')),
+                         (7, f"MAPA COMPARATIVO {codigo}/{ano}")]:
+        ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=13)
+        ws.cell(linha, 1, texto)
+    titulos = dados.get('titulos_pesquisa', TITULOS_PESQUISA_PADRAO)
+    ws['A8'] = 'Item / Código'
+    for c in (2, 5, 8):
+        ws.merge_cells(start_row=8, start_column=c, end_row=8, end_column=c+1)
+        ws.cell(8, c, f'{(c-2)//3+1}º Colocado / Unitário / Total')
+        ws.cell(8, c+2, 'Qtd./Und./Marca')
+    ws['K8'], ws['L8'], ws['M8'] = *titulos, 'MÉDIA'
+    fontes = wb.create_sheet("Valores classificados")
+    fontes.append(["Item", "Fornecedor", "Unitário"])
+    linha_fonte = 2
+    for indice, item in enumerate(itens):
+        r = 9 + indice * 4
+        propostas = [] if item.get('cancelado') else item['propostas']
+        ws.cell(r, 1, item['numero_item'])
+        ws.cell(r+2, 1, item['codigo'])
+        for pos in range(3):
+            c = 2 + pos * 3
+            ws.merge_cells(start_row=r, start_column=c, end_row=r, end_column=c+1)
+            if pos < len(propostas):
+                proposta = propostas[pos]
+                ws.cell(r, c, proposta['fornecedor'])
+                ws.cell(r, c+2, proposta['quantidade'])
+                ws.cell(r+1, c, proposta['unitario'])
+                ws.cell(r+1, c+1, proposta['total'])
+                ws.cell(r+1, c+2, item['un'])
+                ws.cell(r+2, c, 'Prazo (dias)')
+                ws.cell(r+2, c+1, proposta.get('prazo'))
+                ws.cell(r+2, c+2, proposta.get('marca') or '')
+            else:
+                ws.cell(r, c, 'CANCELADO' if item.get('cancelado') else 'DESERTO' if not propostas else 'PROPOSTA NÃO APRESENTADA')
+        ws.merge_cells(start_row=r+3, start_column=1, end_row=r+3, end_column=3)
+        ws.cell(r+3, 1, 'Saldo remanescente')
+        ws.cell(r+3, 4, item['saldo'])
+        ws.merge_cells(start_row=r+3, start_column=5, end_row=r+3, end_column=10)
+        ws.cell(r+3, 5, item['descricao'])
+        for j in range(2):
+            ws.merge_cells(start_row=r, start_column=11+j, end_row=r+2, end_column=11+j)
+            ws.cell(r, 11+j, item.get('pesquisas', [None, None])[j])
+        inicio = linha_fonte
+        # Inclui todos os fornecedores válidos, não apenas os três exibidos.
+        for proposta in item['propostas']:
+            fontes.append([str(item['numero_item']), proposta['fornecedor'], proposta['unitario']])
+            linha_fonte += 1
+        argumentos = [f'K{r}', f'L{r}']
+        if linha_fonte > inicio:
+            argumentos.insert(0, f"'Valores classificados'!C{inicio}:C{linha_fonte-1}")
+        args = ','.join(argumentos)
+        ws.cell(r, 13, f'=IF(COUNT({args})=0,"",AVERAGE({args}))')
+        ws.cell(r+1, 13, 'MEDIANA')
+        ws.cell(r+2, 13, f'=IF(COUNT({args})=0,"",MEDIAN({args}))')
+        ws.cell(r+3, 13, f'=IF(COUNT(M{r},M{r+2})=0,"",MIN(M{r},M{r+2}))')
+        ws.cell(r+2, 14, f'=IF(M{r+3}="","",M{r+3}*1.5)')
+        ws.cell(r+3, 14, f'=IF(M{r+3}="","",M{r+3}*0.5)')
+        ws.cell(r+2, 15, '50% ACIMA')
+        ws.cell(r+3, 15, '50% ABAIXO')
+        ws.merge_cells(start_row=r+3, start_column=11, end_row=r+3, end_column=12)
+        ws.cell(r+3, 11, 'Preço de referência')
+    ws.merge_cells('A57:M57')
+    ws['A57'] = dados.get('texto_pesquisa', TEXTO_PESQUISA_PADRAO)
+    ws.row_dimensions[57].height = 170
+    for r, (numeros, vencedor) in enumerate(montar_declaracao_vencedores(itens), 59):
+        ws.cell(r, 1, ', '.join(map(str, numeros)))
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=13)
+        ws.cell(r, 2, vencedor)
+    rodape = [(73, dados.get('observacoes', '')),
+              (76, 'Aceita essa solicitação, procederemos à etapa do envio de Ordem de Compra do material cotado.'),
+              (79, 'Atenciosamente, COMISSÃO DO PDPAS.'),
+              (82, 'ADJUDICAÇÃO E HOMOLOGAÇÃO'),
+              (83, 'De acordo, em função do exposto acima.'),
+              (85, 'Adjudico e Homologo o presente. Proceda-se à desaplicação dos recursos necessários para fazer face ao pagamento da presente aquisição, assim que os materiais forem entregues e a NOTA FISCAL for atestada.'),
+              (88, 'Em tempo, solicitamos envio ao NPDOC para acompanhamento do prazo de entrega.'),
+              (90, 'Atendendo ao art. 16. Inciso IV da Portaria SES 473, de 04/12/2023 Declaro que há disponibilidade financeira para cobrir a presente contratação.'),
+              (92, f"{dados.get('diretor_nome', '')} — {dados.get('diretor_matricula', '')}")]
+    for r, texto in rodape:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=13)
+        ws.cell(r, 1, texto)
+    ws.row_dimensions[73].height = 55 if dados.get('observacoes') else 8
+    ws.row_dimensions[85].height = 30
+    ws.row_dimensions[90].height = 25
+    lado = Side(style='thin', color='000000')
+    borda = Border(left=lado, right=lado, top=lado, bottom=lado)
+    for row in ws:
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
+            cell.font = Font(size=8)
+            if cell.column >= 11 or (cell.row >= 9 and (cell.row-9) % 4 == 1 and cell.column in (2, 3, 5, 6, 8, 9)) or (cell.row >= 9 and (cell.row-9) % 4 == 3 and cell.column == 4):
+                cell.number_format = '#,##0.00'
+            if 8 <= cell.row <= 8 + 4*len(itens) and cell.column <= 13:
+                cell.border = borda
+                if cell.row == 8:
+                    cell.fill = PatternFill('solid', fgColor='A5A5A5')
+                elif (cell.row - 9) % 4 == 3 and cell.column >= 11:
+                    cell.fill = PatternFill('solid', fgColor='00FFFF')
+    for r in (4, 7, 82):
+        ws.cell(r, 1).font = Font(size=12, bold=True)
+        ws.cell(r, 1).fill = PatternFill('solid', fgColor='00FFFF')
+    ws['A57'].alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+    for c in range(1, 16):
+        ws.column_dimensions[get_column_letter(c)].width = 12 if c in (2, 5, 8, 11, 12, 13) else 9
+    ws.row_dimensions[8].height = 42
+    ws.print_area = 'A1:M92'
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    wb.save(caminho)
+
 
 TEXTO_OBSERVACAO_PADRAO = (
     "A cotação foi finalizada com menos de três propostas para o(s) item(ns) {itens}, uma vez "
@@ -82,6 +289,7 @@ def montar_mapa_itens_completo(linhas_resultado, mapa_fornecedores, fornecedores
                     continue
                 propostas.append({
                     "fornecedor": texto_completo,
+                    "fornecedor_chave": normalizar_texto(nome_forn),
                     "quantidade": it.get("quantidade"),
                     "unitario": unitario,
                     "total": it.get("total"),
@@ -137,7 +345,8 @@ def montar_declaracao_vencedores(mapa_itens):
 def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, objeto_titulo="",
                                 observacoes="", diretor_nome="", diretor_matricula="",
                                 sei_publicacao="", tipo_planilha="HRG",
-                                publicacao_rotulo="1ª PUBLICAÇÃO"):
+                                publicacao_rotulo="1ª PUBLICAÇÃO", texto_pesquisa=TEXTO_PESQUISA_PADRAO,
+                                titulos_pesquisa=TITULOS_PESQUISA_PADRAO):
     """Gera o Mapa Comparativo / Solicitação de Adjudicação replicando o
     layout usado pela SES/PDPAS (cabeçalho, barra de título, tabela de
     1º/2º/3º colocado por item com saldo remanescente e descrição, tabela de
@@ -169,12 +378,12 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                                    alignment=TA_CENTER, fontName="Helvetica-Bold", leading=13)
     estilo_mapa_titulo = ParagraphStyle("MapaTitulo", parent=styles["Normal"], fontSize=14,
                                         alignment=TA_CENTER, fontName="Helvetica-Bold")
-    estilo_cel_item = ParagraphStyle("CelItem", parent=styles["Normal"], fontSize=8.5,
+    estilo_cel_item = ParagraphStyle("CelItem", parent=styles["Normal"], fontSize=7,
                                      alignment=TA_CENTER, fontName="Helvetica-Bold", leading=10)
-    estilo_cel_normal = ParagraphStyle("CelNormal", parent=styles["Normal"], fontSize=7.5,
-                                       alignment=TA_CENTER, leading=9)
-    estilo_cel_bold = ParagraphStyle("CelBold", parent=styles["Normal"], fontSize=7.5,
-                                     alignment=TA_CENTER, fontName="Helvetica-Bold", leading=9)
+    estilo_cel_normal = ParagraphStyle("CelNormal", parent=styles["Normal"], fontSize=6,
+                                       alignment=TA_CENTER, leading=8)
+    estilo_cel_bold = ParagraphStyle("CelBold", parent=styles["Normal"], fontSize=6,
+                                     alignment=TA_CENTER, fontName="Helvetica-Bold", leading=8)
     estilo_desc = ParagraphStyle("Desc", parent=styles["Normal"], fontSize=7.5, leading=9,
                                  fontName="Helvetica-Bold", alignment=TA_LEFT)
     estilo_corpo = ParagraphStyle("Corpo", parent=styles["Normal"], fontSize=9, leading=12,
@@ -226,7 +435,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     story.append(Paragraph(f"MAPA COMPARATIVO {codigo_cotacao}/{ano}", estilo_mapa_titulo))
     story.append(Spacer(1, 8))
 
-    frac = [0.09, 0.10, 0.10, 0.09, 0.10, 0.10, 0.09, 0.10, 0.10, 0.09]
+    frac = [0.05, 0.085, 0.065, 0.05, 0.085, 0.065, 0.05, 0.085, 0.065, 0.05, 0.11, 0.11, 0.13]
     col_widths = [largura_util * f for f in frac]
 
     linhas = [[
@@ -238,6 +447,8 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         Paragraph("3º Colocado /<br/>Unitário / Total", estilo_cel_bold), "",
         Paragraph("Qtd./Und./<br/>Marca", estilo_cel_bold),
     ]]
+    linhas[0] += [Paragraph(escape(titulo), estilo_cel_bold) for titulo in titulos_pesquisa]
+    linhas[0].append(Paragraph("MÉDIA", estilo_cel_bold))
     estilos_extra = [
         ("SPAN", (1, 0), (2, 0)), ("SPAN", (4, 0), (5, 0)), ("SPAN", (7, 0), (8, 0)),
         ("BACKGROUND", (0, 0), (-1, 0), COR_CINZA_ADJ),
@@ -272,6 +483,12 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                 else:
                     texto_vazio = "DESERTO" if not item["propostas"] else "PROPOSTA NÃO APRESENTADA"
                 linha1 += [Paragraph(texto_vazio, estilo_cel_bold), "", ""]
+        pesquisas = item.get("pesquisas", [None, None])
+        ref = item.get("referencias", {})
+        linha1 += [Paragraph(formatar_pesquisa(v), estilo_cel_normal) for v in pesquisas]
+        linha1.append(Paragraph(formatar_pesquisa(ref.get("media")), estilo_cel_normal))
+        estilos_extra += [("SPAN", (10, linha_idx), (10, linha_idx+2)),
+                          ("SPAN", (11, linha_idx), (11, linha_idx+2))]
         linhas.append(linha1)
         estilos_extra += [
             ("SPAN", (1, linha_idx), (2, linha_idx)), ("SPAN", (4, linha_idx), (5, linha_idx)),
@@ -290,6 +507,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                            Paragraph(item["un"], estilo_cel_normal)]
             else:
                 linha2 += ["", "", ""]
+        linha2 += ["", "", Paragraph("MEDIANA", estilo_cel_bold)]
         linhas.append(linha2)
         estilos_extra.append(("BACKGROUND", (0, linha_idx), (0, linha_idx), cor_bloco))
         linha_idx += 1
@@ -304,6 +522,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                            Paragraph(p["marca"] or "", estilo_cel_normal)]
             else:
                 linha3 += ["", ""]
+        linha3 += ["", "", Paragraph(formatar_pesquisa(ref.get("mediana")), estilo_cel_normal)]
         linhas.append(linha3)
         estilos_extra += [
             ("BACKGROUND", (0, linha_idx), (0, linha_idx), cor_bloco),
@@ -321,6 +540,10 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         linha4 = [Paragraph("Saldo remanescente", estilo_cel_bold), "", "",
                   Paragraph(saldo_texto, estilo_cel_bold),
                   Paragraph(descricao_1_linha, estilo_desc), "", "", "", "", ""]
+        linha4 += [Paragraph("Preço de referência", estilo_cel_bold), "",
+                   Paragraph(formatar_pesquisa(ref.get("minimo")), estilo_cel_bold)]
+        estilos_extra += [("SPAN", (10, linha_idx), (11, linha_idx)),
+                          ("BACKGROUND", (10, linha_idx), (12, linha_idx), cor_base)]
         linhas.append(linha4)
         estilos_extra += [
             ("SPAN", (0, linha_idx), (2, linha_idx)), ("SPAN", (4, linha_idx), (9, linha_idx)),
@@ -342,18 +565,13 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     tabela.setStyle(TableStyle(estilos_extra + [
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
     story.append(tabela)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph(
-        "Em função do que se apresenta na planilha acima, das necessidades expostas no Termo de "
-        "Referência e que o(s) produto(s) ofertado(s) atende(m) ao(s) requisito(s) de melhor "
-        "proposta, prevista no edital referente à presente cotação, solicitamos de V.Sª o respaldo "
-        "administrativo para declarar vencedora, por terem apresentado o menor preço e/ou menor "
-        "prazo de entrega, a(s) seguinte(s) empresa(s) para o(s) respectivo(s) item(ns):",
-        estilo_corpo))
+    story.append(Paragraph(escape(texto_pesquisa).replace("\n", "<br/>"), estilo_corpo))
     story.append(Spacer(1, 6))
 
     grupos_vencedores = montar_declaracao_vencedores(mapa_itens)
@@ -429,7 +647,10 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     linhas_rodape.append(linha_rodape4)
     story.append(Paragraph("<br/>".join(linhas_rodape), estilo_rodape))
 
-    doc.build(story)
+    if len(mapa_itens) <= 12:
+        doc.build([KeepInFrame(doc.width, doc.height - 12, story, mode="shrink")])
+    else:
+        doc.build(story)
 
 
 # ----------------------------------------------------------------------
@@ -782,6 +1003,7 @@ class AdjudicacaoOrdemMixin:
         for item in mapa_itens:
             decisao = decisoes.get(str(item["numero_item"]))
             if decisao:
+                aplicar_retiradas(item, decisao.get("fornecedores_retirados", []))
                 item["vencedor_idx"] = decisao.get("vencedor_idx")
                 item["cancelado"] = bool(decisao.get("cancelado"))
 
@@ -885,16 +1107,18 @@ class AdjudicacaoOrdemMixin:
         if not mapa_itens:
             return
 
+        pesquisas = self._perguntar_pesquisas_precos(mapa_itens)
+        if pesquisas is None:
+            return
+        if not self._revisar_precos(mapa_itens, pesquisas):
+            return
+
         # 1) marca quais itens (se houver) devem aparecer como CANCELADO
         mapa_itens = self._perguntar_itens_cancelados(mapa_itens)
 
         # 2) confirma/ajusta manualmente quem é o vencedor de cada item
         #    (por padrão é o de menor preço, mas pode ter desistido etc.)
         mapa_itens = self._perguntar_vencedores(mapa_itens)
-
-        # salva as decisões (vencedor/cancelado) para o botão ORDEM poder
-        # reutilizá-las depois, sem precisar perguntar de novo
-        self._salvar_decisoes_mapa(mapa_itens)
 
         # 3) monta os textos automáticos (objeto e observações padrão)
         objeto_auto = gerar_objeto_automatico(mapa_itens)
@@ -904,6 +1128,7 @@ class AdjudicacaoOrdemMixin:
                              if itens_poucas_propostas else "")
 
         dados_extra = self._perguntar_dados_finalizacao(objeto_auto, observacoes_auto)
+        dados_extra["titulos_pesquisa"] = pesquisas
 
         base = f"MAPA COMPARATIVO {self._codigo_cotacao_atual}"
         caminho_pdf = os.path.join(self._pasta_cotacao_atual, base + ".pdf")
@@ -916,17 +1141,148 @@ class AdjudicacaoOrdemMixin:
                 diretor_nome=self.entry_da_nome.get().strip(),
                 diretor_matricula=self.entry_da_matricula.get().strip(),
                 sei_publicacao=self.entry_sei.get().strip(),  # já vem preenchido na tela principal
-                tipo_planilha=self._sufixo_planilha_atual)
+                tipo_planilha=self._sufixo_planilha_atual,
+                texto_pesquisa=dados_extra["texto_pesquisa"], titulos_pesquisa=pesquisas)
+            caminho_excel = os.path.join(self._pasta_cotacao_atual, base + ".xlsx")
+            dados_extra["diretor_nome"] = self.entry_da_nome.get().strip()
+            dados_extra["diretor_matricula"] = self.entry_da_matricula.get().strip()
+            gerar_excel_mapa_comparativo(caminho_excel, self._codigo_cotacao_atual,
+                                        self._ano_atual_wizard, mapa_itens, dados_extra)
             caminho_jpg = converter_pdf_para_jpg(caminho_pdf, caminho_jpg_base)
         except Exception as e:
             messagebox.showerror("Erro ao gerar Mapa Comparativo", str(e))
             return
 
+        if not self._salvar_decisoes_mapa(mapa_itens, dados_extra):
+            return
+        # Atualiza também o relatório de preços já existente, sem abrir outra tela.
+        from Mapa import montar_ranking_itens, gerar_pdf_ranking
+        excluidos = {it["codigo"]: it.get("fornecedores_retirados", []) for it in mapa_itens}
+        ranking = montar_ranking_itens(self.mapa_fornecedores, fornecedores_texto, excluidos)
+        try:
+            gerar_pdf_ranking(os.path.join(self._pasta_cotacao_atual,
+                f"RELACAO MENOR PRECO {self._codigo_cotacao_atual}.pdf"),
+                self._codigo_cotacao_atual, self._ano_atual_wizard, ranking)
+        except Exception as e:
+            messagebox.showwarning("Relação por menor preço", f"Mapa salvo, mas não foi possível atualizar a relação de preços: {e}")
         messagebox.showinfo(
             "Mapa Comparativo gerado",
-            f"Arquivos salvos em:\n{caminho_pdf}\n{caminho_jpg}")
+            f"Arquivos salvos em:\n{caminho_pdf}\n{caminho_jpg}\n{caminho_excel}")
 
         exibir_preview_pdf_jpg(self, caminho_jpg, "Mapa Comparativo")
+
+    def _perguntar_pesquisas_precos(self, mapa_itens):
+        janela = ctk.CTkToplevel(self)
+        janela.title("Pesquisa de preços por item")
+        janela.geometry("1000x650")
+        janela.grab_set()
+        ctk.CTkLabel(janela, text="PESQUISA PREÇOS 1 e 2 — valores unitários sem R$; vazio = não informado",
+                     font=FONTE_SECAO).pack(pady=12)
+        cabecalho = ctk.CTkFrame(janela)
+        cabecalho.pack(fill="x", padx=16)
+        titulos = []
+        for i, default in enumerate(TITULOS_PESQUISA_PADRAO):
+            ctk.CTkLabel(cabecalho, text=f"PESQUISA PREÇOS {i+1} — título:").pack(side="left", padx=8)
+            entry = ctk.CTkEntry(cabecalho, width=230)
+            entry.insert(0, default)
+            entry.pack(side="left", padx=8)
+            titulos.append(entry)
+        scroll = ctk.CTkScrollableFrame(janela)
+        scroll.pack(fill="both", expand=True, padx=16, pady=12)
+        campos = []
+        def formatar(entry):
+            try:
+                valor = numero_pesquisa(entry.get())
+            except ValueError:
+                return
+            entry.delete(0, "end")
+            entry.insert(0, formatar_pesquisa(valor))
+        for item in mapa_itens:
+            frame = ctk.CTkFrame(scroll)
+            frame.pack(fill="x", pady=4)
+            ctk.CTkLabel(frame, text=f"Item {item['numero_item']} — {item['descricao'][:55]}",
+                         width=480, anchor="w").pack(side="left", padx=8)
+            entries = []
+            for _ in range(2):
+                entry = ctk.CTkEntry(frame, width=180)
+                entry.pack(side="left", padx=8)
+                entry.bind("<FocusOut>", lambda event, campo=entry: formatar(campo))
+                entries.append(entry)
+            campos.append((item, entries))
+        resultado = []
+        def confirmar():
+            try:
+                valores = [[numero_pesquisa(e.get()) for e in entries] for _, entries in campos]
+            except ValueError:
+                messagebox.showerror("Preço inválido", "Use valores positivos, como 1.234,56, ou deixe vazio.", parent=janela)
+                return
+            for (item, _), precos in zip(campos, valores):
+                item['pesquisas'] = precos
+                recalcular_referencias(item)
+            resultado.extend(e.get().strip() or default for e, default in zip(titulos, TITULOS_PESQUISA_PADRAO))
+            janela.destroy()
+        ctk.CTkButton(janela, text="Calcular e revisar preços", command=confirmar).pack(pady=12)
+        self.wait_window(janela)
+        return resultado or None
+
+    def _revisar_precos(self, mapa_itens, titulos):
+        janela = ctk.CTkToplevel(self)
+        janela.title("Revisão dos preços por item")
+        janela.geometry("1050x750")
+        janela.grab_set()
+        selecoes = []
+        paineis = []
+        for titulo in ("PREÇOS ACIMA DE 50%", "PREÇOS ABAIXO DE 50%"):
+            ctk.CTkLabel(janela, text=titulo, font=FONTE_SECAO).pack(pady=(12, 4))
+            painel = ctk.CTkScrollableFrame(janela, height=250)
+            painel.pack(fill="both", expand=True, padx=16)
+            paineis.append(painel)
+        def atualizar():
+            selecoes.clear()
+            for painel in paineis:
+                for widget in painel.winfo_children():
+                    widget.destroy()
+            contagens = [0, 0]
+            for item in mapa_itens:
+                ref = item['referencias']
+                if ref['minimo'] is None:
+                    continue
+                valores = [(p['fornecedor'], p['unitario'], 'fornecedor', p.get('fornecedor_chave', p['fornecedor']))
+                           for p in item['propostas']]
+                valores += [(titulos[i], v, 'pesquisa', i) for i, v in enumerate(item['pesquisas']) if v is not None]
+                for nome, valor, tipo, chave in valores:
+                    grupo = 0 if valor > ref['superior'] else 1 if valor < ref['inferior'] else None
+                    if grupo is None:
+                        continue
+                    contagens[grupo] += 1
+                    var = tk.BooleanVar(value=False)
+                    texto = (f"RETIRAR VALOR — Item {item['numero_item']} — {nome}: {formatar_pesquisa(valor)} "
+                             f"(referência {formatar_pesquisa(ref['minimo'])})")
+                    ctk.CTkCheckBox(paineis[grupo], text=texto, variable=var).pack(anchor="w", padx=8, pady=6)
+                    selecoes.append((item, tipo, chave, var))
+            for i, total in enumerate(contagens):
+                if not total:
+                    ctk.CTkLabel(paineis[i], text="Nenhum preço fora deste limite.").pack(pady=12)
+        def recalcular():
+            for item in mapa_itens:
+                fornecedores = [chave for it, tipo, chave, var in selecoes if it is item and tipo == 'fornecedor' and var.get()]
+                pesquisas = [chave for it, tipo, chave, var in selecoes if it is item and tipo == 'pesquisa' and var.get()]
+                aplicar_retiradas(item, fornecedores, pesquisas)
+            atualizar()
+        resultado = []
+        def continuar():
+            if any(var.get() for _, _, _, var in selecoes):
+                messagebox.showwarning("Recalcular", "Clique em RECALCULAR para aplicar os valores marcados.", parent=janela)
+                return
+            resultado.append(True)
+            janela.destroy()
+        botoes = ctk.CTkFrame(janela)
+        botoes.pack(pady=12)
+        ctk.CTkButton(botoes, text="RECALCULAR", command=recalcular).pack(side="left", padx=8)
+        ctk.CTkButton(botoes, text="Continuar", command=continuar).pack(side="left", padx=8)
+        atualizar()
+        self.wait_window(janela)
+        return bool(resultado)
 
     def _perguntar_itens_cancelados(self, mapa_itens):
         """Tela simples para marcar quais itens devem aparecer como
@@ -1033,7 +1389,7 @@ class AdjudicacaoOrdemMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Dados do Mapa Comparativo")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("680x420")
+        janela.geometry("800x720")
         janela.grab_set()
 
         ctk.CTkLabel(janela, text="OBJETO da cotação (título do mapa):", font=FONTE_SECAO,
@@ -1042,6 +1398,12 @@ class AdjudicacaoOrdemMixin:
         entry_objeto.pack(fill="x", padx=16)
         if objeto_auto:
             entry_objeto.insert("1.0", objeto_auto)
+
+        ctk.CTkLabel(janela, text="Pesquisa de preços e justificativa (editável):",
+                     font=FONTE_SECAO).pack(anchor="w", padx=16, pady=(12, 4))
+        entry_pesquisa = ctk.CTkTextbox(janela, height=240, font=("Segoe UI", 13))
+        entry_pesquisa.pack(fill="x", padx=16)
+        entry_pesquisa.insert("1.0", TEXTO_PESQUISA_PADRAO)
 
         ctk.CTkLabel(janela, text="Observações (editável — já preenchido quando aplicável):",
                      font=FONTE_SECAO, text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(12, 4))
@@ -1053,6 +1415,7 @@ class AdjudicacaoOrdemMixin:
         resultado = {}
 
         def confirmar():
+            resultado["texto_pesquisa"] = entry_pesquisa.get("1.0", "end").strip()
             resultado["objeto"] = entry_objeto.get("1.0", "end").strip()
             resultado["observacoes"] = entry_obs.get("1.0", "end").strip()
             janela.destroy()
@@ -1063,7 +1426,7 @@ class AdjudicacaoOrdemMixin:
         self.wait_window(janela)
         return resultado
 
-    def _salvar_decisoes_mapa(self, mapa_itens):
+    def _salvar_decisoes_mapa(self, mapa_itens, dados_extra=None):
         """Grava no mesmo MAPA_EMPRESAS_{cotação}.json quem foi o vencedor
         escolhido (ou item cancelado) para cada item, para o botão ORDEM
         poder reaproveitar sem perguntar de novo."""
@@ -1074,15 +1437,22 @@ class AdjudicacaoOrdemMixin:
             try:
                 with open(caminho_json, "r", encoding="utf-8") as f:
                     conteudo = json.load(f)
-            except Exception:
-                conteudo = {}
+            except Exception as e:
+                messagebox.showerror("Erro ao salvar", f"Não foi possível ler o cadastro existente: {e}")
+                return False
         conteudo["cotacao"] = self._codigo_cotacao_atual
         conteudo["ano"] = self._ano_atual_wizard
         conteudo["fornecedores"] = self.mapa_fornecedores
+        if dados_extra is not None:
+            conteudo["dados_mapa"] = dados_extra
         conteudo["decisoes_itens"] = {
             str(item["numero_item"]): {
+                "codigo": item["codigo"],
                 "vencedor_idx": item.get("vencedor_idx"),
                 "cancelado": bool(item.get("cancelado")),
+                "fornecedores_retirados": item.get("fornecedores_retirados", []),
+                "pesquisas": item.get("pesquisas", []),
+                "referencias": item.get("referencias", {}),
             }
             for item in mapa_itens
         }
@@ -1091,6 +1461,8 @@ class AdjudicacaoOrdemMixin:
                 json.dump(conteudo, f, ensure_ascii=False, indent=2)
         except Exception as e:
             messagebox.showerror("Erro ao salvar", f"Não foi possível salvar as decisões:\n{e}")
+            return False
+        return True
 
 
 def re_sub_nome_arquivo(nome):

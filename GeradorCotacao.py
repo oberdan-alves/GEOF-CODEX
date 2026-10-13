@@ -1023,7 +1023,7 @@ class _AppCotacaoBase(ctk.CTk):
 
         self._grupo_botoes(area, col=2, cor=COR_GRUPO_3,
                             titulo="3º Passo – Adjudicação e Ordem",
-                            botoes=[("ADJUDICAÇÃO", self.acao_adjudicacao),
+                            botoes=[("ADJUDICAÇÃO", self._acionar_adjudicacao),
                                     ("ORDEM", self.acao_ordem),
                                     ("SALVAR", self.acao_salvar_passo3)])
 
@@ -1032,6 +1032,15 @@ class _AppCotacaoBase(ctk.CTk):
                             botoes=[("E-mail Cotação", self.acao_email_cotacao),
                                     ("E-mail Ordem", self.acao_email_ordem),
                                     ("FERIADOS", self.acao_gerenciar_feriados)])
+
+    def _acionar_adjudicacao(self):
+        """Entrada do botão ADJUDICAÇÃO da tela CONTROLE DE COTAÇÕES.
+
+        O módulo AdjudicacaoOrdem carrega o cadastro da cotação e conduz
+        pesquisas de preços, revisão/recalculo, cancelamentos, vencedores,
+        dados do mapa e geração de PDF/JPG/Excel, salvando as decisões da Ordem.
+        """
+        return self.acao_adjudicacao()
 
     def _grupo_botoes(self, parent, col, cor, titulo, botoes):
         frame = ctk.CTkFrame(parent, fg_color=cor, corner_radius=12)

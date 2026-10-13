@@ -166,7 +166,7 @@ def carregar_saldos_bd(caminho_arquivo):
 # ----------------------------------------------------------------------
 # PASSO 26 — RANKING DE PROPOSTAS POR MENOR PREÇO (tela + PDF)
 # ----------------------------------------------------------------------
-def montar_ranking_itens(mapa_fornecedores, fornecedores_texto_completo):
+def montar_ranking_itens(mapa_fornecedores, fornecedores_texto_completo, excluidos_por_codigo=None):
     """A partir do cadastro de propostas por fornecedor, monta, para cada
     código de item, a lista de propostas ordenada por menor preço unitário.
     Retorna uma lista de tuplas (codigo, {"descricao","un","propostas":[...]})
@@ -180,6 +180,8 @@ def montar_ranking_itens(mapa_fornecedores, fornecedores_texto_completo):
             if unitario is None or unitario <= 0:
                 continue  # fornecedor não cotou este item
             codigo = item["codigo"]
+            if normalizar_texto(nome_forn) in (excluidos_por_codigo or {}).get(codigo, []):
+                continue
             if codigo not in itens_index:
                 itens_index[codigo] = {"descricao": item.get("descricao", ""),
                                         "un": item.get("un", ""), "propostas": []}
@@ -902,7 +904,18 @@ class MapaMixin:
         if not self.mapa_fornecedores:
             return
         fornecedores_texto = self._obter_fornecedores_texto_completo()
-        ranking = montar_ranking_itens(self.mapa_fornecedores, fornecedores_texto)
+        caminho_json = self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, self._codigo_cotacao_atual)
+        excluidos = {}
+        if os.path.exists(caminho_json):
+            try:
+                with open(caminho_json, "r", encoding="utf-8") as arquivo:
+                    decisoes = json.load(arquivo).get("decisoes_itens", {})
+                excluidos = {d["codigo"]: d.get("fornecedores_retirados", [])
+                             for d in decisoes.values() if "codigo" in d}
+            except (OSError, ValueError) as e:
+                messagebox.showerror("Erro ao ler classificação", str(e))
+                return
+        ranking = montar_ranking_itens(self.mapa_fornecedores, fornecedores_texto, excluidos)
         if not ranking:
             messagebox.showinfo("Relação por menor preço",
                                  "Nenhuma proposta com valor unitário informado foi encontrada.")
