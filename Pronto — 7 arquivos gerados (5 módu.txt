@@ -1,0 +1,34 @@
+Pronto — 7 arquivos gerados (5 módulos .py + README + requirements.txt), testados de fato (py_compile + import cruzado real, com python3-tk instalado no sandbox para validar a herança múltipla).
+
+Estrutura final:
+
+Arquivo	Conteúdo
+GeradorCotacao.py	Módulo principal: constantes globais (cores, fontes, colunas da planilha, contatos padrão), funções utilitárias compartilhadas (formatação, normalizar_texto, buscar_cotacoes_na_planilha, converter_pdf_para_jpg), persistência de config, e a classe AppCotacao (tela/menu). É o arquivo que você executa.
+Cotacao.py	1º Passo: acao_criar_pasta_cotacao, acao_salvar_cotacao (PEDIDO), gerar_pdf_pedido_cotacao, NUCLEO_TEMPLATES
+Mapa.py	2º Passo: acao_acessar_propostas, acao_listar_empresas, o assistente (wizard) de cadastro de propostas, acao_incluir_empresas_mapa, acao_carregar_empresas_mapa, leitura das abas Fornecedores/BD, ranking por menor preço
+AdjudicacaoOrdem.py	3º Passo: acao_adjudicacao, acao_ordem, acao_salvar_passo3, geração do Mapa Comparativo e da Ordem de Compra em PDF
+Emails.py	Placeholders de E-mail Cotação / E-mail Ordem
+
+Como a "colagem" funciona: cada módulo de Passo define um mixin (CotacaoMixin, MapaMixin, AdjudicacaoOrdemMixin, EmailMixin) em vez de repetir a classe inteira. GeradorCotacao.py importa os quatro e monta:
+
+python
+class AppCotacao(ctk.CTk, CotacaoMixin, MapaMixin, AdjudicacaoOrdemMixin, EmailMixin):
+
+Isso elimina duplicação (por exemplo, a lógica de preview de PDF→JPG que se repetia 3× no arquivo original virou uma função só, exibir_preview_pdf_jpg, em GeradorCotacao.py).
+
+O README.md incluído explica a estrutura e traz uma tabela "onde mexer para cada tipo de ajuste" — útil justamente para reduzir o escopo (e os tokens) de pedidos futuros de manutenção.
+
+Geradorcotacao
+PY 
+Cotacao
+PY 
+Mapa
+PY 
+Adjudicacaoordem
+PY 
+Emails
+PY 
+Readme
+Documento · MD 
+Requirements
+TXT 
