@@ -47,9 +47,43 @@ Pronto! Seu VS Code ficará sincronizado com a versão oficial do GitHub.
 Importante: esses comandos não enviam nada para o GitHub; eles atualizam sua cópia local.
 
 
-DO VS para o GIT
-git status
-git add "Ajuda.txt" 
-git diff --cached --name-status
-git commit -m "Ajuda.txt" 
-git push origin main
+
+
+
+
+
+enviar todos os arquivos do VS Code para o GitHub, fazendo a versão local substituir a versão do repositório GEOF-CODEX.
+
+Vamos fazer isso pelo terminal do VS Code.
+
+⚠️ Atenção: esse procedimento pode substituir alterações e commits que existem somente no GitHub. Faça uma cópia de segurança antes.
+
+1. Entre na pasta do projeto
+
+Confirme que o terminal está em:
+
+G:\Meu Drive\python\GeradorCotacao
+2. Adicione todos os arquivos locais
+git add -A
+3. Crie um commit
+git commit -m "Atualiza GitHub com a versao local"
+
+Se aparecer nothing to commit, significa que não há alterações locais novas para registrar.
+
+4. Envie a versão local para o GitHub
+
+Como anteriormente houve o erro non-fast-forward, se você quer que a versão local substitua também o histórico divergente da branch remota, o comando é:
+
+git push --force-with-lease origin main
+
+Esse comando pode substituir o histórico remoto que não existe localmente. O --force-with-lease oferece uma proteção contra alterações remotas inesperadas, mas não elimina o risco de sobrescrever trabalho de outras pessoas.
+
+5. Confira o GitHub
+
+Abra 
+GEOF-CODEX no GitHub
+ e atualize a página para conferir os arquivos.
+
+Importante: git add -A inclui adições, modificações e exclusões de arquivos rastreados. Arquivos ignorados pelo .gitignore não serão adicionados.
+
+Se quiser, antes do passo 4, envie o resultado de git status e git log -1 --oneline para conferirmos o que será publicado.
