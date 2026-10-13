@@ -1,0 +1,55 @@
+baixar todos os arquivos do GitHub e substituir a versão local do VS Code pela versão oficial do repositório GEOF-CODEX.
+
+Vamos fazer isso no terminal do VS Code, no Windows.
+
+Atenção: as alterações locais que não estão no GitHub serão perdidas se forem sobrescritas. Primeiro, faça uma cópia de segurança da pasta G:\Meu Drive\python\GeradorCotacao.
+
+Passo 1 — Baixe as informações mais recentes do GitHub
+
+Execute:
+
+git fetch origin
+Passo 2 — Substitua os arquivos locais pela versão do GitHub
+
+Se você confirmou que quer descartar as alterações locais e deixar sua pasta exatamente como a branch main do GitHub, execute:
+
+git reset --hard origin/main
+
+Esse comando fará com que os arquivos rastreados localmente correspondam à versão do GitHub, descartando alterações locais e commits que não estejam nessa branch remota.
+
+Passo 3 — Remova arquivos novos que não existem no GitHub (opcional)
+
+Se também quiser apagar arquivos e pastas não rastreados pelo Git, primeiro veja o que seria removido:
+
+git clean -nd
+
+Se a lista contiver somente arquivos que você realmente quer excluir, execute:
+
+git clean -fd
+
+Esse último comando apaga arquivos e pastas não rastreados, inclusive arquivos locais que você queira manter. Por isso, confira a lista antes.
+
+Passo 4 — Confira o resultado
+
+Execute:
+
+git status
+
+O resultado esperado é semelhante a:
+
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+
+Pronto! Seu VS Code ficará sincronizado com a versão oficial do GitHub.
+
+Importante: esses comandos não enviam nada para o GitHub; eles atualizam sua cópia local.
+
+
+DO VS para o GIT
+git status
+git add "Ajuda.txt" 
+git diff --cached --name-status
+git commit -m "Ajuda.txt" 
+git push origin main
