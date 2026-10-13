@@ -1107,18 +1107,12 @@ class AdjudicacaoOrdemMixin:
         if not mapa_itens:
             return
 
-        pesquisas = self._perguntar_pesquisas_precos(mapa_itens)
+        # Cancelados ficam no documento, mas não participam do fechamento por item.
+        mapa_itens = self._perguntar_itens_cancelados(mapa_itens)
+        ativos = [item for item in mapa_itens if not item.get("cancelado")]
+        pesquisas = self._perguntar_pesquisas_precos(ativos)
         if pesquisas is None:
             return
-        if not self._revisar_precos(mapa_itens, pesquisas):
-            return
-
-        # 1) marca quais itens (se houver) devem aparecer como CANCELADO
-        mapa_itens = self._perguntar_itens_cancelados(mapa_itens)
-
-        # 2) confirma/ajusta manualmente quem é o vencedor de cada item
-        #    (por padrão é o de menor preço, mas pode ter desistido etc.)
-        mapa_itens = self._perguntar_vencedores(mapa_itens)
 
         # 3) monta os textos automáticos (objeto e observações padrão)
         objeto_auto = gerar_objeto_automatico(mapa_itens)
@@ -1172,117 +1166,163 @@ class AdjudicacaoOrdemMixin:
         exibir_preview_pdf_jpg(self, caminho_jpg, "Mapa Comparativo")
 
     def _perguntar_pesquisas_precos(self, mapa_itens):
+        """Fecha pesquisa, revisão e vencedor de um item antes de avançar."""
+        ativos = [item for item in mapa_itens if not item.get("cancelado")]
+        if not ativos:
+            return list(TITULOS_PESQUISA_PADRAO)
         janela = ctk.CTkToplevel(self)
-        janela.title("Pesquisa de preços por item")
-        janela.geometry("1000x650")
+        janela.title("Pesquisa de preços por item — revisão e vencedor")
+        janela.geometry("1280x940")
+        janela.minsize(1050, 780)
         janela.grab_set()
-        ctk.CTkLabel(janela, text="PESQUISA PREÇOS 1 e 2 — valores unitários sem R$; vazio = não informado",
-                     font=FONTE_SECAO).pack(pady=12)
+        fonte = ("Segoe UI", 17)
+        destaque = ("Segoe UI", 19, "bold")
         cabecalho = ctk.CTkFrame(janela)
-        cabecalho.pack(fill="x", padx=16)
+        cabecalho.pack(fill="x", padx=20, pady=12)
         titulos = []
         for i, default in enumerate(TITULOS_PESQUISA_PADRAO):
-            ctk.CTkLabel(cabecalho, text=f"PESQUISA PREÇOS {i+1} — título:").pack(side="left", padx=8)
-            entry = ctk.CTkEntry(cabecalho, width=230)
+            bloco = ctk.CTkFrame(cabecalho, fg_color="transparent")
+            bloco.pack(side="left", fill="x", expand=True, padx=10)
+            ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} — título editável", font=fonte).pack(anchor="w")
+            entry = ctk.CTkEntry(bloco, font=fonte, height=38)
+            entry.pack(fill="x")
             entry.insert(0, default)
-            entry.pack(side="left", padx=8)
             titulos.append(entry)
-        scroll = ctk.CTkScrollableFrame(janela)
-        scroll.pack(fill="both", expand=True, padx=16, pady=12)
-        campos = []
-        def formatar(entry):
-            try:
-                valor = numero_pesquisa(entry.get())
-            except ValueError:
-                return
-            entry.delete(0, "end")
-            entry.insert(0, formatar_pesquisa(valor))
-        for item in mapa_itens:
-            frame = ctk.CTkFrame(scroll)
-            frame.pack(fill="x", pady=4)
-            ctk.CTkLabel(frame, text=f"Item {item['numero_item']} — {item['descricao'][:55]}",
-                         width=480, anchor="w").pack(side="left", padx=8)
-            entries = []
-            for _ in range(2):
-                entry = ctk.CTkEntry(frame, width=180)
-                entry.pack(side="left", padx=8)
-                entry.bind("<FocusOut>", lambda event, campo=entry: formatar(campo))
-                entries.append(entry)
-            campos.append((item, entries))
+        titulo_item = ctk.CTkLabel(janela, text="", font=destaque, wraplength=1200)
+        titulo_item.pack(fill="x", padx=20, pady=(0, 8))
+        corpo = ctk.CTkScrollableFrame(janela)
+        corpo.pack(fill="both", expand=True, padx=20)
+        rodape = ctk.CTkFrame(janela, border_width=2, border_color=COR_DESTAQUE)
+        rodape.pack(fill="x", padx=20, pady=10)
+        botoes = ctk.CTkFrame(janela, fg_color="transparent")
+        botoes.pack(fill="x", padx=20, pady=(0, 16))
+        estado = {"indice": 0}
         resultado = []
-        def confirmar():
+        entradas, selecoes, retiradas_pesquisa = [], [], set()
+        vencedor = tk.IntVar(master=janela, value=0)
+        aplicado = [None]
+
+        def atuais():
+            return ativos[estado["indice"]]
+
+        def nomes():
+            return [e.get().strip() or default for e, default in zip(titulos, TITULOS_PESQUISA_PADRAO)]
+
+        def ler():
             try:
-                valores = [[numero_pesquisa(e.get()) for e in entries] for _, entries in campos]
+                return [None if i in retiradas_pesquisa else numero_pesquisa(e.get())
+                        for i, e in enumerate(entradas)]
             except ValueError:
                 messagebox.showerror("Preço inválido", "Use valores positivos, como 1.234,56, ou deixe vazio.", parent=janela)
+                return None
+
+        def atualizar_revisao():
+            item = atuais()
+            for widget in revisao.winfo_children():
+                widget.destroy()
+            selecoes.clear()
+            ref = item["referencias"]
+            texto = "   |   ".join(f"{nome}: {formatar_pesquisa(ref[chave]) or '—'}" for nome, chave in
+                [("Média", "media"), ("Mediana", "mediana"), ("Referência", "minimo")])
+            ctk.CTkLabel(revisao, text=texto, font=destaque, wraplength=1180).pack(pady=8)
+            valores = [(p["fornecedor"], p["unitario"], "fornecedor", p.get("fornecedor_chave", p["fornecedor"]))
+                       for p in item["propostas"]]
+            valores += [(nomes()[i], v, "pesquisa", i) for i, v in enumerate(item["pesquisas"]) if v is not None]
+            for titulo, chave, acima in [("PREÇOS ACIMA DE 50%", "superior", True),
+                                        ("PREÇOS ABAIXO DE 50%", "inferior", False)]:
+                limite = ref[chave]
+                ctk.CTkLabel(revisao, text=f"{titulo} — limite {formatar_pesquisa(limite) or '—'}", font=destaque).pack(anchor="w", pady=(10, 4))
+                encontrados = [] if limite is None else [v for v in valores if (v[1] > limite if acima else v[1] < limite)]
+                for nome, valor, tipo, identificador in encontrados:
+                    var = tk.BooleanVar(master=janela, value=False)
+                    ctk.CTkCheckBox(revisao, text=f"RETIRAR VALOR — {nome}: {formatar_pesquisa(valor)}",
+                        variable=var, font=fonte, height=32).pack(anchor="w", padx=10, pady=5)
+                    selecoes.append((tipo, identificador, var))
+                if not encontrados:
+                    ctk.CTkLabel(revisao, text="Nenhum preço fora deste limite.", font=fonte).pack(anchor="w", padx=10)
+            for widget in rodape.winfo_children():
+                widget.destroy()
+            ctk.CTkLabel(rodape, text="CLASSIFICAÇÃO ATUAL — selecione a empresa vencedora deste item", font=destaque).pack(anchor="w", padx=12, pady=8)
+            for pos, proposta in enumerate(item["propostas"][:5]):
+                nome, _ = extrair_nome_codigo_fornecedor(proposta["fornecedor"])
+                nome = truncar_em_palavra(nome, 60)
+                ctk.CTkRadioButton(rodape, text=f"{pos+1}º colocado — {nome} — Unitário: {formatar_pesquisa(proposta['unitario'])}",
+                    variable=vencedor, value=pos, font=fonte, height=30).pack(anchor="w", padx=16, pady=4)
+            if not item["propostas"]:
+                ctk.CTkLabel(rodape, text="Sem propostas classificadas — item sem vencedor.", font=fonte).pack(pady=10)
+
+        def recalcular():
+            precos = ler()
+            if precos is None:
                 return
-            for (item, _), precos in zip(campos, valores):
-                item['pesquisas'] = precos
-                recalcular_referencias(item)
-            resultado.extend(e.get().strip() or default for e, default in zip(titulos, TITULOS_PESQUISA_PADRAO))
-            janela.destroy()
-        ctk.CTkButton(janela, text="Calcular e revisar preços", command=confirmar).pack(pady=12)
+            item = atuais()
+            idx = vencedor.get()
+            escolhido = item["propostas"][idx] if 0 <= idx < len(item["propostas"]) else None
+            fornecedores = [chave for tipo, chave, var in selecoes if tipo == "fornecedor" and var.get()]
+            pesquisas = [chave for tipo, chave, var in selecoes if tipo == "pesquisa" and var.get()]
+            item["pesquisas"] = precos
+            aplicar_retiradas(item, fornecedores, pesquisas)
+            retiradas_pesquisa.update(pesquisas)
+            for i, entry in enumerate(entradas):
+                entry.configure(state="normal")
+                entry.delete(0, "end")
+                entry.insert(0, formatar_pesquisa(item["pesquisas"][i]))
+                if i in retiradas_pesquisa:
+                    entry.configure(state="disabled")
+            vencedor.set(next((i for i, p in enumerate(item["propostas"]) if p is escolhido), 0))
+            aplicado[0] = list(item["pesquisas"])
+            atualizar_revisao()
+
+        def mostrar_item():
+            item = atuais()
+            titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']} — {item['descricao']}\nItem {estado['indice']+1} de {len(ativos)}")
+            for widget in corpo.winfo_children():
+                widget.destroy()
+            entradas.clear()
+            selecoes.clear()
+            retiradas_pesquisa.clear()
+            item["pesquisas"] = [None, None]
+            recalcular_referencias(item)
+            vencedor.set(0)
+            valores_frame = ctk.CTkFrame(corpo)
+            valores_frame.pack(fill="x", pady=8)
+            for i in range(2):
+                bloco = ctk.CTkFrame(valores_frame, fg_color="transparent")
+                bloco.pack(side="left", fill="x", expand=True, padx=12, pady=10)
+                ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} — unitário sem R$", font=fonte).pack(anchor="w")
+                entry = ctk.CTkEntry(bloco, font=("Segoe UI", 20), height=44)
+                entry.pack(fill="x")
+                entradas.append(entry)
+            nonlocal revisao
+            revisao = ctk.CTkFrame(corpo, fg_color="transparent")
+            revisao.pack(fill="x", pady=8)
+            aplicado[0] = [None, None]
+            atualizar_revisao()
+            avancar.configure(text="CONFIRMAR EMPRESA VENCEDORA POR ITEM E PRÓXIMO" if estado["indice"] < len(ativos)-1 else "CONFIRMAR EMPRESA VENCEDORA POR ITEM E CONCLUIR")
+
+        def confirmar_item():
+            precos = ler()
+            if precos is None:
+                return
+            if precos != aplicado[0] or any(var.get() for _, _, var in selecoes):
+                messagebox.showwarning("Recalcular", "Clique em RECALCULAR para atualizar os preços e aplicar as retiradas antes de confirmar.", parent=janela)
+                return
+            item = atuais()
+            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            if estado["indice"] == len(ativos)-1:
+                resultado.extend(nomes())
+                janela.destroy()
+            else:
+                estado["indice"] += 1
+                mostrar_item()
+
+        revisao = None
+        ctk.CTkButton(botoes, text="RECALCULAR", font=destaque, height=44, width=200, command=recalcular).pack(side="left", padx=(0, 12))
+        avancar = ctk.CTkButton(botoes, text="", font=fonte, height=44, command=confirmar_item)
+        avancar.pack(side="left", fill="x", expand=True)
+        mostrar_item()
         self.wait_window(janela)
         return resultado or None
-
-    def _revisar_precos(self, mapa_itens, titulos):
-        janela = ctk.CTkToplevel(self)
-        janela.title("Revisão dos preços por item")
-        janela.geometry("1050x750")
-        janela.grab_set()
-        selecoes = []
-        paineis = []
-        for titulo in ("PREÇOS ACIMA DE 50%", "PREÇOS ABAIXO DE 50%"):
-            ctk.CTkLabel(janela, text=titulo, font=FONTE_SECAO).pack(pady=(12, 4))
-            painel = ctk.CTkScrollableFrame(janela, height=250)
-            painel.pack(fill="both", expand=True, padx=16)
-            paineis.append(painel)
-        def atualizar():
-            selecoes.clear()
-            for painel in paineis:
-                for widget in painel.winfo_children():
-                    widget.destroy()
-            contagens = [0, 0]
-            for item in mapa_itens:
-                ref = item['referencias']
-                if ref['minimo'] is None:
-                    continue
-                valores = [(p['fornecedor'], p['unitario'], 'fornecedor', p.get('fornecedor_chave', p['fornecedor']))
-                           for p in item['propostas']]
-                valores += [(titulos[i], v, 'pesquisa', i) for i, v in enumerate(item['pesquisas']) if v is not None]
-                for nome, valor, tipo, chave in valores:
-                    grupo = 0 if valor > ref['superior'] else 1 if valor < ref['inferior'] else None
-                    if grupo is None:
-                        continue
-                    contagens[grupo] += 1
-                    var = tk.BooleanVar(value=False)
-                    texto = (f"RETIRAR VALOR — Item {item['numero_item']} — {nome}: {formatar_pesquisa(valor)} "
-                             f"(referência {formatar_pesquisa(ref['minimo'])})")
-                    ctk.CTkCheckBox(paineis[grupo], text=texto, variable=var).pack(anchor="w", padx=8, pady=6)
-                    selecoes.append((item, tipo, chave, var))
-            for i, total in enumerate(contagens):
-                if not total:
-                    ctk.CTkLabel(paineis[i], text="Nenhum preço fora deste limite.").pack(pady=12)
-        def recalcular():
-            for item in mapa_itens:
-                fornecedores = [chave for it, tipo, chave, var in selecoes if it is item and tipo == 'fornecedor' and var.get()]
-                pesquisas = [chave for it, tipo, chave, var in selecoes if it is item and tipo == 'pesquisa' and var.get()]
-                aplicar_retiradas(item, fornecedores, pesquisas)
-            atualizar()
-        resultado = []
-        def continuar():
-            if any(var.get() for _, _, _, var in selecoes):
-                messagebox.showwarning("Recalcular", "Clique em RECALCULAR para aplicar os valores marcados.", parent=janela)
-                return
-            resultado.append(True)
-            janela.destroy()
-        botoes = ctk.CTkFrame(janela)
-        botoes.pack(pady=12)
-        ctk.CTkButton(botoes, text="RECALCULAR", command=recalcular).pack(side="left", padx=8)
-        ctk.CTkButton(botoes, text="Continuar", command=continuar).pack(side="left", padx=8)
-        atualizar()
-        self.wait_window(janela)
-        return bool(resultado)
 
     def _perguntar_itens_cancelados(self, mapa_itens):
         """Tela simples para marcar quais itens devem aparecer como
@@ -1325,62 +1365,6 @@ class AdjudicacaoOrdemMixin:
         self.wait_window(janela)
         return mapa_itens
 
-    def _perguntar_vencedores(self, mapa_itens):
-        """Mostra os até 3 colocados de cada item e deixa o usuário confirmar
-        (ou trocar) qual deles é o vencedor de fato — por padrão já vem
-        marcado o de menor preço, mas pode ter desistido/sido desclassificado
-        e o 2º ou 3º colocado assume."""
-        itens_com_proposta = [it for it in mapa_itens if it["propostas"] and not it.get("cancelado")]
-        if not itens_com_proposta:
-            return mapa_itens
-
-        janela = ctk.CTkToplevel(self)
-        janela.title("Confirmar empresa vencedora por item")
-        janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("980x620")
-        janela.grab_set()
-
-        ctk.CTkLabel(
-            janela,
-            text="Por padrão, o vencedor é o de menor preço. Altere se necessário "
-                 "(ex.: desistência — o 2º ou 3º colocado assume):",
-            font=FONTE_SECAO, text_color=COR_TEXTO, wraplength=930, justify="left"
-        ).pack(anchor="w", padx=16, pady=(16, 8))
-
-        scroll = ctk.CTkScrollableFrame(janela, fg_color="#161616", height=460)
-        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 10))
-
-        variaveis = {}
-        for item in itens_com_proposta:
-            frame_item = ctk.CTkFrame(scroll, fg_color="#1f1f1f", corner_radius=8)
-            frame_item.pack(fill="x", pady=4, padx=2)
-            ctk.CTkLabel(
-                frame_item,
-                text=f"Item {item['numero_item']} — {item['codigo']} — {item['descricao'][:70]}",
-                font=("Segoe UI", 12, "bold"), text_color=COR_TEXTO, anchor="w"
-            ).pack(anchor="w", padx=10, pady=(8, 4))
-
-            var = tk.IntVar(value=item.get("vencedor_idx", 0) or 0)
-            variaveis[item["numero_item"]] = var
-            linha_opcoes = ctk.CTkFrame(frame_item, fg_color="transparent")
-            linha_opcoes.pack(fill="x", padx=10, pady=(0, 8))
-            for idx, p in enumerate(item["propostas"][:3]):
-                texto_opcao = f"{idx + 1}º: {p['fornecedor']} — {formatar_moeda(p['unitario'])}"
-                ctk.CTkRadioButton(linha_opcoes, text=texto_opcao, variable=var, value=idx,
-                                   font=FONTE_TABELA, text_color=COR_TEXTO
-                                   ).pack(side="left", padx=(0, 20))
-
-        def confirmar():
-            for item in itens_com_proposta:
-                item["vencedor_idx"] = variaveis[item["numero_item"]].get()
-            janela.destroy()
-
-        ctk.CTkButton(janela, text="Confirmar vencedores e continuar", font=FONTE_BOTAO,
-                      height=36, fg_color=COR_DESTAQUE, command=confirmar).pack(pady=(0, 16))
-        janela.protocol("WM_DELETE_WINDOW", confirmar)
-        self.wait_window(janela)
-        return mapa_itens
-
     def _perguntar_dados_finalizacao(self, objeto_auto="", observacoes_auto=""):
         """Pergunta/confirma o objeto (título do mapa) e as observações —
         ambos já vêm pré-preenchidos automaticamente, mas continuam
@@ -1389,25 +1373,28 @@ class AdjudicacaoOrdemMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Dados do Mapa Comparativo")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("800x720")
+        janela.geometry("1200x950")
+        janela.minsize(950, 750)
         janela.grab_set()
 
-        ctk.CTkLabel(janela, text="OBJETO da cotação (título do mapa):", font=FONTE_SECAO,
+        conteudo = ctk.CTkScrollableFrame(janela)
+        conteudo.pack(fill="both", expand=True, padx=16, pady=10)
+        ctk.CTkLabel(conteudo, text="OBJETO da cotação (título do mapa):", font=("Segoe UI", 20, "bold"),
                      text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(16, 4))
-        entry_objeto = ctk.CTkTextbox(janela, height=70, font=("Segoe UI", 14))
+        entry_objeto = ctk.CTkTextbox(conteudo, height=100, font=("Segoe UI", 18))
         entry_objeto.pack(fill="x", padx=16)
         if objeto_auto:
             entry_objeto.insert("1.0", objeto_auto)
 
-        ctk.CTkLabel(janela, text="Pesquisa de preços e justificativa (editável):",
-                     font=FONTE_SECAO).pack(anchor="w", padx=16, pady=(12, 4))
-        entry_pesquisa = ctk.CTkTextbox(janela, height=240, font=("Segoe UI", 13))
+        ctk.CTkLabel(conteudo, text="Pesquisa de preços e justificativa (editável):",
+                     font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=16, pady=(12, 4))
+        entry_pesquisa = ctk.CTkTextbox(conteudo, height=350, font=("Segoe UI", 18))
         entry_pesquisa.pack(fill="x", padx=16)
         entry_pesquisa.insert("1.0", TEXTO_PESQUISA_PADRAO)
 
-        ctk.CTkLabel(janela, text="Observações (editável — já preenchido quando aplicável):",
-                     font=FONTE_SECAO, text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(12, 4))
-        entry_obs = ctk.CTkTextbox(janela, height=140, font=("Segoe UI", 14))
+        ctk.CTkLabel(conteudo, text="Observações (editável — já preenchido quando aplicável):",
+                     font=("Segoe UI", 20, "bold"), text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(12, 4))
+        entry_obs = ctk.CTkTextbox(conteudo, height=180, font=("Segoe UI", 18))
         entry_obs.pack(fill="x", padx=16)
         if observacoes_auto:
             entry_obs.insert("1.0", observacoes_auto)
@@ -1420,7 +1407,7 @@ class AdjudicacaoOrdemMixin:
             resultado["observacoes"] = entry_obs.get("1.0", "end").strip()
             janela.destroy()
 
-        ctk.CTkButton(janela, text="Gerar Mapa Comparativo", font=FONTE_BOTAO, height=36,
+        ctk.CTkButton(janela, text="Gerar Mapa Comparativo", font=("Segoe UI", 20, "bold"), height=46,
                       fg_color=COR_DESTAQUE, command=confirmar).pack(pady=18)
         janela.protocol("WM_DELETE_WINDOW", confirmar)
         self.wait_window(janela)

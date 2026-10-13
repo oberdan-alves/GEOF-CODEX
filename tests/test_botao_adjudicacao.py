@@ -55,7 +55,8 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
     def test_botao_executa_fluxo_anterior_e_novas_etapas(self):
         with tempfile.TemporaryDirectory() as pasta:
             app = self.criar_app_sem_display()
-            app.linhas_resultado = [dict(ITEM=1, CODIGO='VME01', DESCRICAO='Conserto', UN='Serviço')]
+            app.linhas_resultado = [dict(ITEM=1, CODIGO='VME01', DESCRICAO='Conserto', UN='Serviço'),
+                                   dict(ITEM=2, CODIGO='VME02', DESCRICAO='Cancelado', UN='Serviço')]
             app.saldos_bd_atual = {}
             app._pasta_cotacao_atual = pasta
             app._codigo_cotacao_atual = '178'
@@ -73,30 +74,24 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
             app._obter_fornecedores_texto_completo = Mock(return_value={})
             etapas = []
             def pesquisas(itens):
-                etapas.append('pesquisas')
+                etapas.append('pesquisa_revisao_vencedor')
+                self.assertEqual([it['numero_item'] for it in itens], [1])
                 for item in itens:
                     item['pesquisas'] = [8000, 9213.5]
                     adjudicacao.recalcular_referencias(item)
-                return list(adjudicacao.TITULOS_PESQUISA_PADRAO)
-            def revisar(itens, titulos):
-                etapas.append('revisao')
                 adjudicacao.aplicar_retiradas(itens[0], ['C'])
-                return True
+                itens[0]['vencedor_idx'] = 0
+                return list(adjudicacao.TITULOS_PESQUISA_PADRAO)
             def cancelados(itens):
                 etapas.append('cancelados')
                 itens[0]['cancelado'] = False
-                return itens
-            def vencedores(itens):
-                etapas.append('vencedores')
-                itens[0]['vencedor_idx'] = 0
+                itens[1]['cancelado'] = True
                 return itens
             def dados(*args):
                 etapas.append('dados_mapa')
                 return dict(objeto='Conserto', observacoes='', texto_pesquisa='Justificativa vigente')
             app._perguntar_pesquisas_precos = pesquisas
-            app._revisar_precos = revisar
             app._perguntar_itens_cancelados = cancelados
-            app._perguntar_vencedores = vencedores
             app._perguntar_dados_finalizacao = dados
             with patch.object(adjudicacao.messagebox, 'showinfo'), \
                  patch.object(adjudicacao.messagebox, 'showwarning') as aviso, \
@@ -105,7 +100,7 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
                 Button.botoes['ADJUDICAÇÃO'].invoke()
             erro.assert_not_called()
             aviso.assert_not_called()
-            self.assertEqual(etapas, ['pesquisas', 'revisao', 'cancelados', 'vencedores', 'dados_mapa'])
+            self.assertEqual(etapas, ['cancelados', 'pesquisa_revisao_vencedor', 'dados_mapa'])
             preview.assert_called_once()
             for nome in ('MAPA COMPARATIVO 178.pdf', 'MAPA COMPARATIVO 178.xlsx',
                          'RELACAO MENOR PRECO 178.pdf'):

@@ -1037,7 +1037,7 @@ class _AppCotacaoBase(ctk.CTk):
         """Entrada do botão ADJUDICAÇÃO da tela CONTROLE DE COTAÇÕES.
 
         O módulo AdjudicacaoOrdem carrega o cadastro da cotação e conduz
-        pesquisas de preços, revisão/recalculo, cancelamentos, vencedores,
+        cancelamentos, pesquisa/revisão e vencedor de cada item,
         dados do mapa e geração de PDF/JPG/Excel, salvando as decisões da Ordem.
         """
         return self.acao_adjudicacao()
