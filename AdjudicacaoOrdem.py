@@ -1207,7 +1207,7 @@ class AdjudicacaoOrdemMixin:
             bloco = ctk.CTkFrame(cabecalho, fg_color="transparent")
             bloco.pack(side="left", fill="x", expand=True, padx=(6, 40) if i == 0 else (6, 6), pady=8)
             ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} —", font=("Segoe UI", 14, "bold")).pack(side="left", padx=(0, 4))
-            titulo = ctk.CTkEntry(bloco, font=("Segoe UI", 16), height=38, width=90)
+            titulo = ctk.CTkEntry(bloco, font=("Segoe UI", 16), height=38, width=210)
             titulo.pack(side="left", padx=4)
             titulo.insert(0, default)
             titulos.append(titulo)
