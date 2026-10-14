@@ -35,6 +35,8 @@ import json
 import glob
 import datetime
 import unicodedata
+import subprocess
+import sys
 import tkinter as tk
 from tkinter import filedialog, ttk
 from Mensagens import messagebox
@@ -1592,17 +1594,21 @@ class _AppCotacaoBase(ctk.CTk):
                                           "Aguardando especificação.")
 
     def acao_consultar_matrix(self):
+        """Localiza e abre a Matrix selecionada no aplicativo de planilhas."""
         pasta_geof = self.entry_pasta_geof.get().strip()
         ano = self.entry_ano.get().strip()
         if not pasta_geof:
             messagebox.showwarning("Atenção", "Informe o caminho da PASTA DE TRABALHO (até \\GEOF).")
             return
-        if not ano or len(ano) != 4:
+        if len(ano) != 4 or not ano.isdigit():
             messagebox.showwarning("Atenção", "Informe o ANO com 4 dígitos.")
             return
 
         pasta_matrix = self._montar_caminho_pasta_matrix()
-        nome_planilha = self.var_nome_planilha.get()
+        nome_planilha = self.var_nome_planilha.get().strip()
+        if not nome_planilha:
+            messagebox.showwarning("Atenção", "Selecione o NOME PLANILHA que deseja abrir.")
+            return
         caminho = self._localizar_arquivo_matrix(pasta_matrix, nome_planilha)
         chave_atual = (
             pasta_geof, ano, getattr(self, "_sufixo_planilha_atual", ""), nome_planilha)
@@ -1624,6 +1630,28 @@ class _AppCotacaoBase(ctk.CTk):
                 f"Não encontrei um arquivo '{nome_planilha}' (.xlsx/.xlsm) em:\n{pasta_matrix}")
         self.entry_caminho_completo.configure(state="readonly")
         self._salvar_defaults_atuais()
+
+        if caminho:
+            try:
+                self._abrir_planilha_matrix(caminho)
+            except (OSError, subprocess.SubprocessError) as erro:
+                messagebox.showerror(
+                    "Erro ao abrir a Matrix",
+                    f"Não foi possível abrir a planilha:\n{caminho}\n\n"
+                    f"Confira se o Excel ou outro aplicativo de planilhas está instalado "
+                    f"e associado a arquivos .xlsx/.xlsm.\n\nDetalhes: {erro}")
+
+    @staticmethod
+    def _abrir_planilha_matrix(caminho):
+        """Abre o arquivo existente sem alterar seus dados, imagens ou modelos."""
+        caminho = os.path.abspath(caminho)
+        if not os.path.isfile(caminho):
+            raise FileNotFoundError(f"Planilha não encontrada: {caminho}")
+        if sys.platform == "win32":
+            os.startfile(caminho)
+        else:
+            comando = "open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.run([comando, caminho], check=True, capture_output=True, text=True)
 
 
 # ----------------------------------------------------------------------
