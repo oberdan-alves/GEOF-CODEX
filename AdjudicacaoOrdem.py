@@ -676,7 +676,7 @@ def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, 
     "Informações técnicas/Aceite NF" muda de acordo com o tipo_planilha
     exato (APS / APS INV / HRG / HRG INV), cada um com seu próprio
     conjunto de contatos."""
-    contatos = contatos or CONTATOS_ORDEM_PADRAO
+    contatos = {**CONTATOS_ORDEM_PADRAO, **(contatos or {})}
     tipo_norm = tipo_planilha.strip().upper()
     is_hrg = "HRG" in tipo_norm
     is_inv = "INV" in tipo_norm
@@ -867,9 +867,22 @@ def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, 
                                "08:00 as 11:00 e 14:00 as 17:00", estilo_corpo))
         story.append(Paragraph(f"Chefe do NPDOC - {contatos.get('NPDOC_APSINV', '')}", estilo_corpo))
     elif tipo_norm == "HRG":
-        story.append(Paragraph("<b>Informações técnicas/Aceite NF:</b>", estilo_corpo))
-        story.append(Paragraph(f"Farmácia/NFH - {contatos.get('NFH', '')}", estilo_corpo))
-        story.append(Paragraph(f"Almoxarifado/NUAL - {contatos.get('NUAL_HRG', '')}", estilo_corpo))
+        linhas_aceite = [
+            [Paragraph("<b>Informações técnicas/Aceite NF:</b>", estilo_corpo)],
+            [Paragraph(f"<b>Farmácia NFH</b> - {escape(contatos['NFH'])}", estilo_corpo)],
+            [Paragraph(f"<b>Almoxarifado NUAL</b> - {escape(contatos['NUAL_HRG'])}", estilo_corpo)],
+            [Paragraph(f"<b>Engenharia Clínica NECFM</b> - {escape(contatos['NECFM_HRG'])}", estilo_corpo)],
+        ]
+        tabela_aceite = Table(linhas_aceite, colWidths=[largura_util])
+        tabela_aceite.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(tabela_aceite)
     else:  # HRG INV — atenção: aqui NÃO entra NECFM, só o Chefe do NPDOC
         story.append(Paragraph("<b>Informações técnicas/Aceite NF:</b>", estilo_corpo))
         story.append(Paragraph("Entrega no Núcleo de Patrimônio (NPDOC/HRG) de segunda a QUINTA de "

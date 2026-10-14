@@ -131,7 +131,8 @@ CONTATOS_ORDEM_PADRAO = {
     "NUAL_APS": "CARLOS EDUARDO LIRA DOS SANTOS, matrícula 1.709.549-2",
     "NECFM": "RODRIGO RIBEIRO TENÓRIO, matrícula 1.691.497-X",
     "NPDOC_APSINV": "ANNA GARDENIA BASTOS MENDES - Matr.1442838-5 - 61 9283-6088",
-    "NFH": "MIRIAM AFONSO DE SOUZA VIEIRA, matrícula 1.700.626-0",
+    "NFH": "MIRELLE CARDARELLI (61) 3449-7070/7071/7073",
+    "NECFM_HRG": "RODRIGO TENÓRIO (Mezanino Acima do PAI no HRG) (61) 9 9639-0162 ***MANUTENÇÃO EQUIPAMENTOS***",
     "NUAL_HRG": "WEILLER MACHADO NOBRE ALVES (61) 3449-7092/7093/7094",
     "NPDOC_HRGINV": "Anderson Carrascozza Rodrigues Pereira - Matr.1.442.917-9 - 61 994 343 504",
 }
@@ -1237,6 +1238,7 @@ class _AppCotacaoBase(ctk.CTk):
                 ("GERENTE_HRG", "GERENTE (também usada em HRG INV)"),
                 ("NFH", "Farmácia - NFH"),
                 ("NUAL_HRG", "Almoxarifado - NUAL"),
+                ("NECFM_HRG", "Engenharia Clínica - NECFM (HRG)"),
             ]),
             ("HRG INV", [
                 ("GERENTE_HRG", "GERENTE (mesma variável do HRG)"),
