@@ -26,6 +26,8 @@ Mapa Comparativo e as Ordens de Compra.
 
 import os
 import json
+from decimal import Decimal, ROUND_HALF_UP
+from math import isfinite
 import tkinter as tk
 from Mensagens import messagebox
 
@@ -43,8 +45,36 @@ from GeradorCotacao import (
     COR_FUNDO_APP, COR_CARD, COR_TEXTO, COR_TEXTO_SEC, COR_DESTAQUE,
     FONTE_ENTRY, FONTE_SECAO, FONTE_BOTAO, FONTE_TABELA,
     normalizar_texto, extrair_nome_codigo_fornecedor, corrigir_acentuacao,
-    parse_numero, formatar_data, formatar_apenas_digitos, formatar_moeda,
+    formatar_data, formatar_apenas_digitos, formatar_moeda,
 )
+
+
+def numero_proposta(texto):
+    """Aceita decimal com ponto/vírgula e milhar no formato brasileiro."""
+    if texto is None or not str(texto).strip():
+        return None
+    texto = str(texto).strip().replace(" ", "")
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        numero = float(texto)
+        return numero if isfinite(numero) else None
+    except ValueError:
+        return None
+
+
+def formatar_quantidade_proposta(valor):
+    numero = numero_proposta(valor)
+    if numero is None:
+        return "" if valor is None else str(valor)
+    return format(Decimal(str(numero)).normalize(), "f").replace(".", ",")
+
+
+def formatar_unitario_proposta(valor):
+    numero = numero_proposta(valor)
+    if numero is None:
+        return "" if valor is None else str(valor)
+    return format(Decimal(str(numero)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP), ".4f").replace(".", ",")
 
 
 # ----------------------------------------------------------------------
@@ -588,18 +618,23 @@ class MapaMixin:
         if dados_existentes:
             self.wizard_entry_data.insert(0, dados_existentes.get("data_proposta", ""))
 
-        cabecalho_cols = ctk.CTkFrame(self.wizard_conteudo, fg_color="#1b1b1b")
-        cabecalho_cols.pack(fill="x", padx=14, pady=(6, 0))
+        self._historico_repeticao = []
+        ctk.CTkButton(topo, text="Repetir dados do primeiro item", font=FONTE_BOTAO,
+                      command=self._repetir_dados_primeiro_item).pack(side="left", padx=(40, 10))
+        self.wizard_botao_desfazer = ctk.CTkButton(topo, text="Desfazer repetição", font=FONTE_BOTAO,
+                      state="disabled", command=self._desfazer_repeticao)
+        self.wizard_botao_desfazer.pack(side="left", padx=10)
+        # Cabeçalhos e campos compartilham a mesma grade e as mesmas colunas.
+        self.wizard_scroll = ctk.CTkScrollableFrame(self.wizard_conteudo, fg_color="#161616", height=380)
+        self.wizard_scroll.pack(fill="both", expand=True, padx=14, pady=(6, 8))
+        cabecalho_cols = self.wizard_scroll
         titulos = ["ITEM", "CÓDIGO", "DESCRIÇÃO", "UN", "QTD", "QUANTIDADE", "UNITÁRIO",
                    "TOTAL", "MARCA", "PRAZO"]
-        larguras = [45, 80, 280, 40, 40, 90, 90, 100, 130, 55]
+        larguras = [45, 80, 280, 50, 45, 90, 105, 100, 130, 55]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
+            self.wizard_scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
             ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 11, "bold"),
                          text_color=COR_TEXTO, width=w).grid(row=0, column=i, padx=2, pady=4)
-
-        self.wizard_scroll = ctk.CTkScrollableFrame(self.wizard_conteudo, fg_color="#161616",
-                                                     height=380)
-        self.wizard_scroll.pack(fill="both", expand=True, padx=14, pady=(0, 8))
 
         itens_salvos = {it["codigo"]: it for it in dados_existentes["itens"]} if dados_existentes else {}
         self._entradas_item_atual = []
@@ -612,43 +647,43 @@ class MapaMixin:
             qtd_cotada = item.get("QTD")
             salvo = itens_salvos.get(codigo, {})
 
-            linha = ctk.CTkFrame(self.wizard_scroll, fg_color="transparent")
-            linha.pack(fill="x", pady=2)
+            linha = self.wizard_scroll
+            linha_idx = 2*i+1
 
-            ctk.CTkLabel(linha, text=str(numero_item or ""), font=FONTE_TABELA, width=45
-                         ).grid(row=0, column=0, padx=2)
-            ctk.CTkLabel(linha, text=codigo, font=FONTE_TABELA, width=80).grid(row=0, column=1, padx=2)
-            ctk.CTkLabel(linha, text=descricao[:55], font=FONTE_TABELA, width=280,
-                         anchor="w", justify="left").grid(row=0, column=2, padx=2, sticky="w")
-            ctk.CTkLabel(linha, text=un, font=FONTE_TABELA, width=40).grid(row=0, column=3, padx=2)
-            ctk.CTkLabel(linha, text=str(qtd_cotada or ""), font=FONTE_TABELA, width=40
-                         ).grid(row=0, column=4, padx=2)
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=FONTE_TABELA, width=45
+                         ).grid(row=linha_idx, column=0, padx=2)
+            ctk.CTkLabel(linha, text=codigo, font=FONTE_TABELA, width=80).grid(row=linha_idx, column=1, padx=2)
+            ctk.CTkLabel(linha, text=descricao[:55], font=FONTE_TABELA, width=280, wraplength=280,
+                         anchor="w", justify="left").grid(row=linha_idx, column=2, padx=2, sticky="w")
+            ctk.CTkLabel(linha, text=un, font=FONTE_TABELA, width=40).grid(row=linha_idx, column=3, padx=2)
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=FONTE_TABELA, width=40
+                         ).grid(row=linha_idx, column=4, padx=2)
 
             entry_qtd = ctk.CTkEntry(linha, width=90, height=28, font=FONTE_TABELA)
-            entry_qtd.grid(row=0, column=5, padx=2)
-            entry_qtd.insert(0, str(salvo.get("quantidade", qtd_cotada or "")))
+            entry_qtd.grid(row=linha_idx, column=5, padx=2)
+            entry_qtd.insert(0, formatar_quantidade_proposta(salvo.get("quantidade", qtd_cotada)))
 
-            entry_unit = ctk.CTkEntry(linha, width=90, height=28, font=FONTE_TABELA,
-                                      placeholder_text="0,00")
-            entry_unit.grid(row=0, column=6, padx=2)
+            entry_unit = ctk.CTkEntry(linha, width=105, height=28, font=FONTE_TABELA,
+                                      placeholder_text="0,0000")
+            entry_unit.grid(row=linha_idx, column=6, padx=2)
             if salvo.get("unitario") is not None:
-                entry_unit.insert(0, str(salvo["unitario"]))
+                entry_unit.insert(0, formatar_unitario_proposta(salvo["unitario"]))
 
             label_total = ctk.CTkLabel(linha, text=formatar_moeda(salvo.get("total", 0)),
                                        font=("Segoe UI", 11, "bold"), width=100)
-            label_total.grid(row=0, column=7, padx=2)
+            label_total.grid(row=linha_idx, column=7, padx=2)
 
             entry_marca = ctk.CTkEntry(linha, width=130, height=28, font=FONTE_TABELA)
-            entry_marca.grid(row=0, column=8, padx=2)
+            entry_marca.grid(row=linha_idx, column=8, padx=2)
             entry_marca.insert(0, salvo.get("marca", ""))
 
             entry_prazo = ctk.CTkEntry(linha, width=55, height=28, font=FONTE_TABELA)
-            entry_prazo.grid(row=0, column=9, padx=2)
-            entry_prazo.insert(0, str(salvo.get("prazo", "")))
+            entry_prazo.grid(row=linha_idx, column=9, padx=2)
+            entry_prazo.insert(0, formatar_quantidade_proposta(salvo.get("prazo", "")))
 
             label_alerta = ctk.CTkLabel(self.wizard_scroll, text="", font=("Segoe UI", 11, "bold"),
                                         text_color="#ff5c5c")
-            label_alerta.pack(anchor="w", padx=4)
+            label_alerta.grid(row=linha_idx+1, column=0, columnspan=10, sticky="w", padx=4, pady=(0, 6))
 
             registro = {
                 "numero_item": numero_item, "codigo": codigo, "descricao": descricao, "un": un,
@@ -663,6 +698,8 @@ class MapaMixin:
             entry_unit.bind("<KeyRelease>", lambda e, idx=i: self._atualizar_total_item(idx))
             entry_prazo.bind("<KeyRelease>", lambda e, idx=i: self._mascarar_prazo(idx))
 
+            entry_qtd.bind("<FocusOut>", lambda e, idx=i: self._formatar_campo_proposta(idx, "entry_qtd"))
+            entry_unit.bind("<FocusOut>", lambda e, idx=i: self._formatar_campo_proposta(idx, "entry_unit"))
             self._atualizar_total_item(i)
 
         # ---------------- RODAPÉ / NAVEGAÇÃO ----------------
@@ -682,6 +719,46 @@ class MapaMixin:
                       fg_color="#7a2626", command=self._fechar_wizard_e_gerar_relacao
                       ).pack(side="right", padx=4)
 
+    def _formatar_campo_proposta(self, idx, campo):
+        entry = self._entradas_item_atual[idx][campo]
+        funcao = formatar_unitario_proposta if campo == "entry_unit" else formatar_quantidade_proposta
+        valor = funcao(entry.get())
+        entry.delete(0, "end")
+        entry.insert(0, valor)
+        self._atualizar_total_item(idx)
+
+    def _repetir_dados_primeiro_item(self):
+        registros = self._entradas_item_atual
+        if len(registros) < 2:
+            return
+        campos = [campo for campo in ("entry_qtd", "entry_unit", "entry_marca", "entry_prazo")
+                  if registros[0][campo].get().strip()]
+        if not campos:
+            return
+        self._historico_repeticao.append([{campo: reg[campo].get() for campo in campos} for reg in registros[1:]])
+        for idx, reg in enumerate(registros[1:], 1):
+            for campo in campos:
+                valor = registros[0][campo].get()
+                if campo == "entry_unit":
+                    valor = formatar_unitario_proposta(valor)
+                elif campo == "entry_qtd":
+                    valor = formatar_quantidade_proposta(valor)
+                reg[campo].delete(0, "end")
+                reg[campo].insert(0, valor)
+            self._atualizar_total_item(idx)
+        self.wizard_botao_desfazer.configure(state="normal")
+
+    def _desfazer_repeticao(self):
+        if not self._historico_repeticao:
+            return
+        anterior = self._historico_repeticao.pop()
+        for idx, (reg, valores) in enumerate(zip(self._entradas_item_atual[1:], anterior), 1):
+            for campo, valor in valores.items():
+                reg[campo].delete(0, "end")
+                reg[campo].insert(0, valor)
+            self._atualizar_total_item(idx)
+        self.wizard_botao_desfazer.configure(state="normal" if self._historico_repeticao else "disabled")
+
     def _on_data_proposta_digitada(self, event=None):
         texto = formatar_data(self.wizard_entry_data.get())
         if texto != self.wizard_entry_data.get():
@@ -699,8 +776,8 @@ class MapaMixin:
 
     def _atualizar_total_item(self, idx):
         reg = self._entradas_item_atual[idx]
-        quantidade = parse_numero(reg["entry_qtd"].get())
-        unitario = parse_numero(reg["entry_unit"].get())
+        quantidade = numero_proposta(reg["entry_qtd"].get())
+        unitario = numero_proposta(reg["entry_unit"].get())
         total = (quantidade or 0) * (unitario or 0)
         reg["label_total"].configure(text=formatar_moeda(total))
 
@@ -749,9 +826,14 @@ class MapaMixin:
 
         itens_calculados = []
         algum_excedido = False
-        for reg in self._entradas_item_atual:
-            quantidade = parse_numero(reg["entry_qtd"].get())
-            unitario = parse_numero(reg["entry_unit"].get())
+        for idx, reg in enumerate(self._entradas_item_atual):
+            for campo in ("entry_qtd", "entry_unit"):
+                if reg[campo].get().strip() and numero_proposta(reg[campo].get()) is None:
+                    messagebox.showwarning("Valor inválido", f"Confira a quantidade e o unitário do item {reg['numero_item']}.")
+                    return
+                self._formatar_campo_proposta(idx, campo)
+            quantidade = numero_proposta(reg["entry_qtd"].get())
+            unitario = numero_proposta(reg["entry_unit"].get())
             total = round((quantidade or 0) * (unitario or 0), 2)
             prazo_texto = reg["entry_prazo"].get().strip()
             itens_calculados.append({
@@ -810,9 +892,9 @@ class MapaMixin:
         for item in itens_com_valor:
             linha = ctk.CTkFrame(scroll, fg_color="transparent")
             linha.pack(fill="x", pady=1)
-            valores = [str(item.get("numero_item") or ""), item["codigo"], item["descricao"][:55],
-                       item["un"], str(item["qtd_cotada"] or ""), str(item["quantidade"] or ""),
-                       formatar_moeda(item["unitario"] or 0), formatar_moeda(item["total"]),
+            valores = [formatar_quantidade_proposta(item.get("numero_item")), item["codigo"], item["descricao"][:55],
+                       item["un"], formatar_quantidade_proposta(item["qtd_cotada"]), formatar_quantidade_proposta(item["quantidade"]),
+                       formatar_unitario_proposta(item["unitario"] or 0), formatar_moeda(item["total"]),
                        item["marca"], str(item["prazo"] or "")]
             for i, (v, w) in enumerate(zip(valores, larguras)):
                 ctk.CTkLabel(linha, text=v, font=FONTE_TABELA, width=w,
