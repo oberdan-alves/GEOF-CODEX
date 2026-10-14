@@ -52,7 +52,7 @@ sempre que um novo e-mail de cotação for montado.
 
 import datetime
 import tkinter as tk
-from tkinter import messagebox
+from Mensagens import messagebox
 
 import customtkinter as ctk
 

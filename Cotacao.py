@@ -38,7 +38,7 @@ mesmo que a tela esteja mostrando outra coisa.
 import os
 import json
 import tkinter as tk
-from tkinter import messagebox
+from Mensagens import messagebox
 
 import customtkinter as ctk
 from reportlab.lib.pagesizes import A4
@@ -176,21 +176,22 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
                                     fontName="Helvetica-Bold")
     estilo_barra_esq = ParagraphStyle("BarraEsqPed", parent=styles["Normal"], fontSize=8,
                                       fontName="Helvetica-Bold", alignment=TA_LEFT, leading=9.5)
-    estilo_barra_centro = ParagraphStyle("BarraCentroPed", parent=styles["Normal"], fontSize=16,
+    estilo_barra_centro = ParagraphStyle("BarraCentroPed", parent=styles["Normal"], fontSize=16, leading=18,
                                          fontName="Helvetica-Bold", alignment=TA_CENTER)
     estilo_barra_direita = ParagraphStyle("BarraDirPed", parent=styles["Normal"], fontSize=10,
                                           fontName="Helvetica-Bold", alignment=TA_RIGHT, leading=12)
-    estilo_setor_label = ParagraphStyle("SetorLabel", parent=styles["Normal"], fontSize=9,
-                                        fontName="Helvetica-Bold", alignment=TA_CENTER)
+    estilo_setor_label = ParagraphStyle("SetorLabel", parent=styles["Normal"], fontSize=8.5, leading=10,
+                                        fontName="Helvetica-Bold", alignment=TA_LEFT)
     estilo_setor_valor = ParagraphStyle("SetorValor", parent=styles["Normal"], fontSize=8.5,
                                         leading=10,
                                         fontName="Helvetica-Bold", alignment=TA_CENTER,
                                         textColor=colors.red)
-    estilo_prazo = ParagraphStyle("PrazoPed", parent=styles["Normal"], fontSize=12,
+    estilo_prazo = ParagraphStyle("PrazoPed", parent=styles["Normal"], fontSize=9, leading=10.5,
                                   fontName="Helvetica-Bold", alignment=TA_CENTER)
-    estilo_entrega_bar = ParagraphStyle("EntregaBar", parent=styles["Normal"], fontSize=11,
+    estilo_entrega_bar = ParagraphStyle("EntregaBar", parent=styles["Normal"], fontSize=9, leading=10.5,
                                         fontName="Helvetica-BoldOblique", alignment=TA_CENTER)
-    estilo_corpo = ParagraphStyle("CorpoPed", parent=styles["Normal"], fontSize=8.3, leading=9.3)
+    estilo_corpo = ParagraphStyle("CorpoPed", parent=styles["Normal"], fontSize=8.3, leading=9.3,
+                                    alignment=TA_JUSTIFY)
     estilo_corpo_bold = ParagraphStyle("CorpoPedBold", parent=estilo_corpo,
                                        fontName="Helvetica-Bold")
     estilo_corpo_bold_italic = ParagraphStyle("CorpoPedBI", parent=estilo_corpo,
@@ -216,11 +217,17 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     ]))
     story.append(Spacer(1, 4))
 
-    linha_publ = [Paragraph(f"Publ. por: <u>{operador or ''}</u>", estilo_publpor), ""]
-    if sei_texto:
-        linha_publ[1] = Paragraph(f"SEI: {sei_texto}", estilo_publpor)
-    tabela_publ = Table([linha_publ], colWidths=[largura_util * 0.5, largura_util * 0.5])
-    tabela_publ.setStyle(TableStyle([("ALIGN", (1, 0), (1, 0), "RIGHT")]))
+    estilo_publicacao_direita = ParagraphStyle(
+        "PublicacaoDireita", parent=estilo_publpor, alignment=TA_RIGHT)
+    linha_publ = [
+        Paragraph(f"SEI: {sei_texto}", estilo_publpor) if sei_texto else "",
+        Paragraph(f"Publ. por: <u>{operador or ''}</u>", estilo_publicacao_direita),
+    ]
+    tabela_publ = Table([linha_publ], colWidths=[largura_util * 0.6, largura_util * 0.4])
+    tabela_publ.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
     story.append(tabela_publ)
     story.append(Spacer(1, 4))
 
@@ -257,14 +264,13 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     elif origem_norm:
         sigla_origem = f"{origem_norm}/{grupo}"
 
-    caixa_setor = Table([
-        [Paragraph("Setor Solicitante:", estilo_setor_label)],
-        [Paragraph(sigla_origem, estilo_setor_valor)],
-    ], colWidths=[largura_util * 0.22])
-    caixa_prazo = Table([[Paragraph(
-        "2 - Prazo para recebimento das propostas, conforme publicado no E-MAIL.", estilo_prazo)]],
-        colWidths=[largura_util * 0.78])
-    linha_setor = Table([[caixa_setor, caixa_prazo]], colWidths=[largura_util * 0.22, largura_util * 0.78])
+    caixa_setor = Paragraph(
+        f'Setor Solicitante: <font color="red">{sigla_origem}</font>', estilo_setor_label)
+    caixa_prazo = Paragraph(
+        "2 - Prazo para recebimento das propostas, conforme <nobr>publicado no E-MAIL.</nobr>",
+        estilo_prazo)
+    linha_setor = Table([[caixa_setor, caixa_prazo]],
+                        colWidths=[largura_util * 0.30, largura_util * 0.70])
     linha_setor.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 1, colors.black),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
@@ -358,7 +364,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     story.append(tabela_itens)
 
     # ---- OBSERVAÇÕES ----
-    estilo_obs_titulo = ParagraphStyle("ObsTitulo", parent=styles["Normal"], fontSize=10,
+    estilo_obs_titulo = ParagraphStyle("ObsTitulo", parent=styles["Normal"], fontSize=9, leading=10,
                                        fontName="Helvetica-Bold", alignment=TA_CENTER)
     story.append(Table([[Paragraph("OBSERVAÇÕES:", estilo_obs_titulo)]], colWidths=[largura_util],
                        style=TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.black),

@@ -29,7 +29,7 @@ from statistics import mean, median
 from math import isfinite
 from xml.sax.saxutils import escape
 import tkinter as tk
-from tkinter import messagebox
+from Mensagens import messagebox
 
 import customtkinter as ctk
 

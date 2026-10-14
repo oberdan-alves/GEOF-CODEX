@@ -36,7 +36,8 @@ import glob
 import datetime
 import unicodedata
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
+from Mensagens import messagebox
 
 import customtkinter as ctk
 from openpyxl import load_workbook

@@ -27,7 +27,7 @@ Mapa Comparativo e as Ordens de Compra.
 import os
 import json
 import tkinter as tk
-from tkinter import messagebox
+from Mensagens import messagebox
 
 import customtkinter as ctk
 from openpyxl import load_workbook
