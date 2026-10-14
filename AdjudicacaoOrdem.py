@@ -24,7 +24,6 @@ cotação no E-mail Cotação); aqui só é importada, não redefinida.
 
 import os
 import json
-import textwrap
 from statistics import mean, median
 from math import isfinite
 from xml.sax.saxutils import escape
@@ -1187,22 +1186,35 @@ class AdjudicacaoOrdemMixin:
         janela.grab_set()
         fonte = ("Segoe UI", 17)
         destaque = ("Segoe UI", 19, "bold")
-        titulo_item = ctk.CTkLabel(janela, text="", font=destaque, wraplength=0, anchor="w")
-        titulo_item.pack(fill="x", padx=20, pady=(10, 6))
+        linha_item = ctk.CTkFrame(janela, fg_color="transparent")
+        linha_item.pack(fill="x", padx=20, pady=(10, 6))
+        contador_item = ctk.CTkLabel(linha_item, text="", font=destaque, anchor="e", width=120)
+        contador_item.pack(side="right", padx=(16, 0))
+        titulo_item = ctk.CTkLabel(linha_item, text="", font=destaque, wraplength=0, anchor="w", width=1)
+        titulo_item.pack(side="left", fill="x", expand=True)
         cabecalho = ctk.CTkFrame(janela)
         cabecalho.pack(fill="x", padx=20, pady=(0, 8))
         titulos, entradas = [], []
+        def formatar_unitario(campo):
+            try:
+                valor = numero_pesquisa(campo.get())
+            except ValueError:
+                return  # A validação ao recalcular mantém o valor inválido visível.
+            campo.delete(0, "end")
+            campo.insert(0, formatar_pesquisa(valor))
+
         for i, default in enumerate(TITULOS_PESQUISA_PADRAO):
             bloco = ctk.CTkFrame(cabecalho, fg_color="transparent")
-            bloco.pack(side="left", fill="x", expand=True, padx=6, pady=8)
+            bloco.pack(side="left", fill="x", expand=True, padx=(6, 40) if i == 0 else (6, 6), pady=8)
             ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} —", font=("Segoe UI", 14, "bold")).pack(side="left", padx=(0, 4))
-            titulo = ctk.CTkEntry(bloco, font=("Segoe UI", 16), height=38, width=180)
-            titulo.pack(side="left", fill="x", expand=True, padx=4)
+            titulo = ctk.CTkEntry(bloco, font=("Segoe UI", 16), height=38, width=90)
+            titulo.pack(side="left", padx=4)
             titulo.insert(0, default)
             titulos.append(titulo)
-            ctk.CTkLabel(bloco, text="UNITÁRIO", font=("Segoe UI", 14, "bold")).pack(side="left", padx=4)
+            ctk.CTkLabel(bloco, text=f"UNITÁRIO {i+1}", font=("Segoe UI", 14, "bold")).pack(side="left", padx=4)
             valor = ctk.CTkEntry(bloco, font=("Segoe UI", 20), height=38, width=120)
             valor.pack(side="left", padx=(4, 0))
+            valor.bind("<FocusOut>", lambda event, campo=valor: formatar_unitario(campo))
             entradas.append(valor)
         corpo = ctk.CTkScrollableFrame(janela)
         corpo.pack(fill="both", expand=True, padx=20)
@@ -1238,8 +1250,10 @@ class AdjudicacaoOrdemMixin:
             ref = item["referencias"]
             texto = "   |   ".join(f"{nome}: {formatar_pesquisa(ref[chave]) or '—'}" for nome, chave in
                 [("Média", "media"), ("Mediana", "mediana")])
-            resumo_frame = ctk.CTkFrame(revisao, fg_color="transparent")
-            resumo_frame.pack(fill="x", pady=6)
+            linha_resumo = ctk.CTkFrame(revisao, fg_color="transparent")
+            linha_resumo.pack(fill="x", pady=6)
+            resumo_frame = ctk.CTkFrame(linha_resumo, fg_color="transparent")
+            resumo_frame.pack(anchor="center")
             ctk.CTkLabel(resumo_frame, text=texto, font=destaque).pack(side="left", padx=12)
             referencia_card = ctk.CTkFrame(resumo_frame, fg_color="#174D3B", border_width=2, border_color="#65E6AC")
             referencia_card.pack(side="left", padx=16)
@@ -1310,8 +1324,9 @@ class AdjudicacaoOrdemMixin:
 
         def mostrar_item():
             item = atuais()
-            descricao = textwrap.shorten(" ".join(item["descricao"].split()), width=90, placeholder="...")
+            descricao = " ".join(item["descricao"].split())
             titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']} — {descricao}")
+            contador_item.configure(text=f"Item {estado['indice']+1}/{len(ativos)}")
             janela.title(f"Pesquisa de preços — Item {estado['indice']+1} de {len(ativos)}")
             for widget in corpo.winfo_children():
                 widget.destroy()

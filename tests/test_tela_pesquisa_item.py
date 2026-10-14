@@ -25,7 +25,9 @@ class Widget:
             parent.children.append(self)
         self.criados.append(self)
     def pack(self, **kwargs):
-        pass
+        self.pack_config = kwargs
+    def bind(self, evento, callback):
+        self.kwargs[evento] = callback
     def configure(self, **kwargs):
         self.kwargs.update(kwargs)
     def winfo_children(self):
@@ -83,11 +85,18 @@ class TelaPesquisaItemTest(unittest.TestCase):
             resumo = next(w for w in Widget.criados if w.kwargs.get('wraplength') == 0)
             self.assertEqual(len(resumo.kwargs['text'].splitlines()), 1)
             self.assertIn('ITEM 1 — VME01 —', resumo.kwargs['text'])
-            self.assertTrue(resumo.kwargs['text'].endswith('...'))
+            self.assertTrue(resumo.kwargs['text'].endswith(primeiro['descricao'].strip()))
+            self.assertTrue(widgets('Item 1/2'))
+            self.assertTrue(widgets('UNITÁRIO 1'))
+            self.assertTrue(widgets('UNITÁRIO 2'))
             self.assertEqual(app.janela.maximizar_agendado, 250)
             self.assertFalse(widgets('ITEM 2'))
             for entry, valor in zip(campos(), ('8.000,00', '9.213,50')):
                 entry.insert(0, valor)
+            campos()[0].delete(0, 'end')
+            campos()[0].insert(0, '8000')
+            campos()[0].kwargs['<FocusOut>'](None)
+            self.assertEqual(campos()[0].get(), '8.000,00')
             clicar('CONFIRMAR EMPRESA')
             self.assertTrue(widgets('ITEM 1'))  # valores novos exigem recálculo
             clicar('RECALCULAR')
