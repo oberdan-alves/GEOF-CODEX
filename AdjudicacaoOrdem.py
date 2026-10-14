@@ -1187,21 +1187,23 @@ class AdjudicacaoOrdemMixin:
         janela.grab_set()
         fonte = ("Segoe UI", 17)
         destaque = ("Segoe UI", 19, "bold")
+        titulo_item = ctk.CTkLabel(janela, text="", font=destaque, wraplength=0, anchor="w")
+        titulo_item.pack(fill="x", padx=20, pady=(10, 6))
         cabecalho = ctk.CTkFrame(janela)
-        cabecalho.pack(fill="x", padx=20, pady=12)
-        titulos = []
+        cabecalho.pack(fill="x", padx=20, pady=(0, 8))
+        titulos, entradas = [], []
         for i, default in enumerate(TITULOS_PESQUISA_PADRAO):
             bloco = ctk.CTkFrame(cabecalho, fg_color="transparent")
-            bloco.pack(side="left", fill="x", expand=True, padx=10)
-            ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} — título editável", font=fonte).pack(anchor="w")
-            entry = ctk.CTkEntry(bloco, font=fonte, height=38)
-            entry.pack(fill="x")
-            entry.insert(0, default)
-            titulos.append(entry)
-        titulo_item = ctk.CTkLabel(janela, text="", font=destaque, wraplength=1200)
-        titulo_item.pack(fill="x", padx=20, pady=(0, 4))
-        descricao_item = ctk.CTkLabel(janela, text="", font=fonte, wraplength=0, justify="left")
-        descricao_item.pack(fill="x", padx=20, pady=(0, 8))
+            bloco.pack(side="left", fill="x", expand=True, padx=6, pady=8)
+            ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} —", font=("Segoe UI", 14, "bold")).pack(side="left", padx=(0, 4))
+            titulo = ctk.CTkEntry(bloco, font=("Segoe UI", 16), height=38, width=180)
+            titulo.pack(side="left", fill="x", expand=True, padx=4)
+            titulo.insert(0, default)
+            titulos.append(titulo)
+            ctk.CTkLabel(bloco, text="UNITÁRIO", font=("Segoe UI", 14, "bold")).pack(side="left", padx=4)
+            valor = ctk.CTkEntry(bloco, font=("Segoe UI", 20), height=38, width=120)
+            valor.pack(side="left", padx=(4, 0))
+            entradas.append(valor)
         corpo = ctk.CTkScrollableFrame(janela)
         corpo.pack(fill="both", expand=True, padx=20)
         rodape = ctk.CTkFrame(janela, border_width=2, border_color=COR_DESTAQUE)
@@ -1210,7 +1212,7 @@ class AdjudicacaoOrdemMixin:
         botoes.pack(fill="x", padx=20, pady=(0, 16))
         estado = {"indice": 0}
         resultado = []
-        entradas, selecoes = [], []
+        selecoes = []
         entry_observacao = None
         vencedor = tk.IntVar(master=janela, value=0)
         aplicado = [None]
@@ -1236,11 +1238,13 @@ class AdjudicacaoOrdemMixin:
             ref = item["referencias"]
             texto = "   |   ".join(f"{nome}: {formatar_pesquisa(ref[chave]) or '—'}" for nome, chave in
                 [("Média", "media"), ("Mediana", "mediana")])
-            ctk.CTkLabel(revisao, text=texto, font=destaque, wraplength=1180).pack(pady=8)
-            referencia_card = ctk.CTkFrame(revisao, fg_color="#174D3B", border_width=2, border_color="#65E6AC")
-            referencia_card.pack(fill="x", padx=8, pady=8)
+            resumo_frame = ctk.CTkFrame(revisao, fg_color="transparent")
+            resumo_frame.pack(fill="x", pady=6)
+            ctk.CTkLabel(resumo_frame, text=texto, font=destaque).pack(side="left", padx=12)
+            referencia_card = ctk.CTkFrame(resumo_frame, fg_color="#174D3B", border_width=2, border_color="#65E6AC")
+            referencia_card.pack(side="left", padx=16)
             ctk.CTkLabel(referencia_card, text=f"REFERÊNCIA: {formatar_pesquisa(ref['minimo']) or '—'}",
-                         font=("Segoe UI", 28, "bold"), text_color="#FFFFFF").pack(padx=14, pady=12)
+                         font=("Segoe UI", 23, "bold"), text_color="#FFFFFF").pack(padx=12, pady=6)
             valores = [(p["fornecedor"], p["unitario"], "fornecedor", p.get("fornecedor_chave", p["fornecedor"]))
                        for p in item["propostas"]]
             for titulo, chave, acima in [("PREÇOS ACIMA DE 50%", "superior", True),
@@ -1306,29 +1310,18 @@ class AdjudicacaoOrdemMixin:
 
         def mostrar_item():
             item = atuais()
-            titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']}  |  Item {estado['indice']+1} de {len(ativos)}")
-            linhas_descricao = textwrap.wrap(" ".join(item["descricao"].split()), width=90)
-            resumo = linhas_descricao[:2]
-            if len(linhas_descricao) > 2:
-                resumo[1] = textwrap.shorten(resumo[1], width=87, placeholder="") + "..."
-            descricao_item.configure(text="\n".join(resumo))
+            descricao = textwrap.shorten(" ".join(item["descricao"].split()), width=90, placeholder="...")
+            titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']} — {descricao}")
+            janela.title(f"Pesquisa de preços — Item {estado['indice']+1} de {len(ativos)}")
             for widget in corpo.winfo_children():
                 widget.destroy()
-            entradas.clear()
             selecoes.clear()
             item.setdefault("pesquisas", [None, None])
             recalcular_referencias(item)
             vencedor.set(item.get("vencedor_idx") or 0)
-            valores_frame = ctk.CTkFrame(corpo)
-            valores_frame.pack(fill="x", pady=8)
-            for i in range(2):
-                bloco = ctk.CTkFrame(valores_frame, fg_color="transparent")
-                bloco.pack(side="left", fill="x", expand=True, padx=12, pady=10)
-                ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} — unitário sem R$", font=fonte).pack(anchor="w")
-                entry = ctk.CTkEntry(bloco, font=("Segoe UI", 20), height=44)
-                entry.pack(fill="x")
+            for i, entry in enumerate(entradas):
+                entry.delete(0, "end")
                 entry.insert(0, formatar_pesquisa(item["pesquisas"][i]))
-                entradas.append(entry)
             nonlocal revisao, entry_observacao
             ctk.CTkLabel(corpo, text="OBSERVAÇÃOITEM — será incluída na pesquisa de preços e justificativa", font=fonte).pack(anchor="w", padx=12, pady=(10, 4))
             entry_observacao = ctk.CTkTextbox(corpo, font=("Segoe UI", 18), height=90)

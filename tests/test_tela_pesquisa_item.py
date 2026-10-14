@@ -81,7 +81,8 @@ class TelaPesquisaItemTest(unittest.TestCase):
         def exercitar():
             self.assertTrue(widgets('ITEM 1'))
             resumo = next(w for w in Widget.criados if w.kwargs.get('wraplength') == 0)
-            self.assertLessEqual(len(resumo.kwargs['text'].splitlines()), 2)
+            self.assertEqual(len(resumo.kwargs['text'].splitlines()), 1)
+            self.assertIn('ITEM 1 — VME01 —', resumo.kwargs['text'])
             self.assertTrue(resumo.kwargs['text'].endswith('...'))
             self.assertEqual(app.janela.maximizar_agendado, 250)
             self.assertFalse(widgets('ITEM 2'))
