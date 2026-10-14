@@ -54,12 +54,15 @@ class Widget:
         pass
     def after_idle(self, callback):
         pass
+    def after(self, delay, callback):
+        self.maximizar_agendado = delay
 
 
 class TelaPesquisaItemTest(unittest.TestCase):
     def test_recalculo_historico_observacoes_e_todos_colocados(self):
-        primeiro = item()
-        segundo = item(precos=(10, 11, 12, 13, 14, 15, 16), numero=2)
+        primeiro = item(pesquisas=(None, None))
+        primeiro['descricao'] = 'Descrição completa do serviço ' * 50
+        segundo = item(precos=(10, 11, 12, 13, 14, 15, 16), pesquisas=(None, None), numero=2)
         cancelado = item(numero=3)
         cancelado['cancelado'] = True
         Widget.criados = []
@@ -77,6 +80,10 @@ class TelaPesquisaItemTest(unittest.TestCase):
         app = App()
         def exercitar():
             self.assertTrue(widgets('ITEM 1'))
+            resumo = next(w for w in Widget.criados if w.kwargs.get('wraplength') == 0)
+            self.assertLessEqual(len(resumo.kwargs['text'].splitlines()), 2)
+            self.assertTrue(resumo.kwargs['text'].endswith('...'))
+            self.assertEqual(app.janela.maximizar_agendado, 250)
             self.assertFalse(widgets('ITEM 2'))
             for entry, valor in zip(campos(), ('8.000,00', '9.213,50')):
                 entry.insert(0, valor)
@@ -100,6 +107,15 @@ class TelaPesquisaItemTest(unittest.TestCase):
             self.assertFalse(widgets('ITEM 1'))
             self.assertEqual([e.get() for e in campos()], ['', ''])
             self.assertEqual(primeiro['observacaoitem'], 'Preço retirado após análise.')
+            clicar('VOLTAR')
+            self.assertEqual([e.get() for e in campos()], ['8.000,00', '9.213,50'])
+            self.assertEqual(len(widgets('colocado —')), 2)
+            self.assertTrue(widgets('REFERÊNCIA:'))
+            campos()[0].delete(0, 'end')
+            campos()[0].insert(0, '8.500,00')
+            clicar('RECALCULAR')
+            clicar('CONFIRMAR EMPRESA')
+            self.assertEqual(primeiro['pesquisas'][0], 8500)
             self.assertEqual(len(widgets('colocado —')), 7)
             for entry, valor in zip(campos(), ('1.000,00', '2.000,00')):
                 entry.insert(0, valor)

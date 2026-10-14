@@ -39,3 +39,24 @@ class CentralizarTest(unittest.TestCase):
         janela.callback()
         self.assertEqual(janela.tamanho, '1052x534+25+50')
         self.assertEqual(janela.minimo, (950, 534))
+
+
+class MaximizarTest(unittest.TestCase):
+    def test_maximiza_apos_criar_janela(self):
+        from unittest.mock import Mock
+        from GeradorCotacao import maximizar_janela
+        janela = Mock()
+        maximizar_janela(janela)
+        janela.after.assert_called_once()
+        janela.after.call_args.args[1]()
+        janela.state.assert_called_once_with('zoomed')
+
+    def test_linux_usa_atributo_zoomed(self):
+        from unittest.mock import Mock
+        import tkinter as tk
+        from GeradorCotacao import maximizar_janela
+        janela = Mock()
+        janela.state.side_effect = tk.TclError('zoomed indisponível')
+        maximizar_janela(janela)
+        janela.after.call_args.args[1]()
+        janela.attributes.assert_called_once_with('-zoomed', True)

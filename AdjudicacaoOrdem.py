@@ -24,6 +24,7 @@ cotação no E-mail Cotação); aqui só é importada, não redefinida.
 
 import os
 import json
+import textwrap
 from statistics import mean, median
 from math import isfinite
 from xml.sax.saxutils import escape
@@ -40,7 +41,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 
 from GeradorCotacao import (
-    centralizar_janela,
+    centralizar_janela, maximizar_janela,
     COR_FUNDO_APP, COR_CARD, COR_TEXTO, COR_DESTAQUE,
     FONTE_BOTAO, FONTE_SECAO, FONTE_TABELA,
     COR_CINZA_ADJ, COR_CIANO_ADJ, COR_VERDE_ADJ, COR_AMARELO_ADJ,
@@ -1181,7 +1182,7 @@ class AdjudicacaoOrdemMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Pesquisa de preços por item — revisão e vencedor")
         janela.geometry("1280x940")
-        centralizar_janela(janela)
+        maximizar_janela(janela)
         janela.minsize(1050, 780)
         janela.grab_set()
         fonte = ("Segoe UI", 17)
@@ -1198,7 +1199,9 @@ class AdjudicacaoOrdemMixin:
             entry.insert(0, default)
             titulos.append(entry)
         titulo_item = ctk.CTkLabel(janela, text="", font=destaque, wraplength=1200)
-        titulo_item.pack(fill="x", padx=20, pady=(0, 8))
+        titulo_item.pack(fill="x", padx=20, pady=(0, 4))
+        descricao_item = ctk.CTkLabel(janela, text="", font=fonte, wraplength=0, justify="left")
+        descricao_item.pack(fill="x", padx=20, pady=(0, 8))
         corpo = ctk.CTkScrollableFrame(janela)
         corpo.pack(fill="both", expand=True, padx=20)
         rodape = ctk.CTkFrame(janela, border_width=2, border_color=COR_DESTAQUE)
@@ -1232,8 +1235,12 @@ class AdjudicacaoOrdemMixin:
             selecoes.clear()
             ref = item["referencias"]
             texto = "   |   ".join(f"{nome}: {formatar_pesquisa(ref[chave]) or '—'}" for nome, chave in
-                [("Média", "media"), ("Mediana", "mediana"), ("Referência", "minimo")])
+                [("Média", "media"), ("Mediana", "mediana")])
             ctk.CTkLabel(revisao, text=texto, font=destaque, wraplength=1180).pack(pady=8)
+            referencia_card = ctk.CTkFrame(revisao, fg_color="#174D3B", border_width=2, border_color="#65E6AC")
+            referencia_card.pack(fill="x", padx=8, pady=8)
+            ctk.CTkLabel(referencia_card, text=f"REFERÊNCIA: {formatar_pesquisa(ref['minimo']) or '—'}",
+                         font=("Segoe UI", 28, "bold"), text_color="#FFFFFF").pack(padx=14, pady=12)
             valores = [(p["fornecedor"], p["unitario"], "fornecedor", p.get("fornecedor_chave", p["fornecedor"]))
                        for p in item["propostas"]]
             for titulo, chave, acima in [("PREÇOS ACIMA DE 50%", "superior", True),
@@ -1277,7 +1284,7 @@ class AdjudicacaoOrdemMixin:
         def recalcular():
             precos = ler()
             if precos is None:
-                return
+                return False
             item = atuais()
             idx = vencedor.get()
             escolhido = item["propostas"][idx] if 0 <= idx < len(item["propostas"]) else None
@@ -1295,17 +1302,23 @@ class AdjudicacaoOrdemMixin:
             vencedor.set(next((i for i, p in enumerate(item["propostas"]) if p is escolhido), 0))
             aplicado[0] = list(item["pesquisas"])
             atualizar_revisao()
+            return True
 
         def mostrar_item():
             item = atuais()
-            titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']} — {item['descricao']}\nItem {estado['indice']+1} de {len(ativos)}")
+            titulo_item.configure(text=f"ITEM {item['numero_item']} — {item['codigo']}  |  Item {estado['indice']+1} de {len(ativos)}")
+            linhas_descricao = textwrap.wrap(" ".join(item["descricao"].split()), width=90)
+            resumo = linhas_descricao[:2]
+            if len(linhas_descricao) > 2:
+                resumo[1] = textwrap.shorten(resumo[1], width=87, placeholder="") + "..."
+            descricao_item.configure(text="\n".join(resumo))
             for widget in corpo.winfo_children():
                 widget.destroy()
             entradas.clear()
             selecoes.clear()
-            item["pesquisas"] = [None, None]
+            item.setdefault("pesquisas", [None, None])
             recalcular_referencias(item)
-            vencedor.set(0)
+            vencedor.set(item.get("vencedor_idx") or 0)
             valores_frame = ctk.CTkFrame(corpo)
             valores_frame.pack(fill="x", pady=8)
             for i in range(2):
@@ -1314,6 +1327,7 @@ class AdjudicacaoOrdemMixin:
                 ctk.CTkLabel(bloco, text=f"PESQUISA DE PREÇOS {i+1} — unitário sem R$", font=fonte).pack(anchor="w")
                 entry = ctk.CTkEntry(bloco, font=("Segoe UI", 20), height=44)
                 entry.pack(fill="x")
+                entry.insert(0, formatar_pesquisa(item["pesquisas"][i]))
                 entradas.append(entry)
             nonlocal revisao, entry_observacao
             ctk.CTkLabel(corpo, text="OBSERVAÇÃOITEM — será incluída na pesquisa de preços e justificativa", font=fonte).pack(anchor="w", padx=12, pady=(10, 4))
@@ -1322,8 +1336,9 @@ class AdjudicacaoOrdemMixin:
             entry_observacao.insert("1.0", item.get("observacaoitem", ""))
             revisao = ctk.CTkFrame(corpo, fg_color="transparent")
             revisao.pack(fill="x", pady=8)
-            aplicado[0] = [None, None]
+            aplicado[0] = list(item["pesquisas"])
             atualizar_revisao()
+            voltar_botao.configure(state="normal" if estado["indice"] else "disabled")
             avancar.configure(text="CONFIRMAR EMPRESA VENCEDORA POR ITEM E PRÓXIMO" if estado["indice"] < len(ativos)-1 else "CONFIRMAR EMPRESA VENCEDORA POR ITEM E CONCLUIR")
 
         def confirmar_item():
@@ -1343,7 +1358,18 @@ class AdjudicacaoOrdemMixin:
                 estado["indice"] += 1
                 mostrar_item()
 
+        def voltar():
+            if estado["indice"] == 0 or not recalcular():
+                return
+            item = atuais()
+            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
+            estado["indice"] -= 1
+            mostrar_item()
+
         revisao = None
+        voltar_botao = ctk.CTkButton(botoes, text="VOLTAR", font=fonte, height=44, width=120, command=voltar)
+        voltar_botao.pack(side="left", padx=(0, 12))
         ctk.CTkButton(botoes, text="RECALCULAR", font=destaque, height=44, width=200, command=recalcular).pack(side="left", padx=(0, 12))
         avancar = ctk.CTkButton(botoes, text="", font=fonte, height=44, command=confirmar_item)
         avancar.pack(side="left", fill="x", expand=True)
@@ -1402,7 +1428,7 @@ class AdjudicacaoOrdemMixin:
         janela.title("Dados do Mapa Comparativo")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("1200x950")
-        centralizar_janela(janela)
+        maximizar_janela(janela)
         janela.minsize(950, 750)
         janela.grab_set()
 

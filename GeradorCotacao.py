@@ -645,6 +645,22 @@ def montar_cabecalho_institucional(largura_util, linhas_texto, tamanho_logo=1.7 
     return tabela
 
 
+def maximizar_janela(janela):
+    """Maximiza após a inicialização do gerenciador de janelas do CTk."""
+    def maximizar():
+        try:
+            janela.state("zoomed")
+        except tk.TclError:
+            try:
+                janela.attributes("-zoomed", True)
+            except tk.TclError:
+                escala = janela._get_window_scaling() if hasattr(janela, "_get_window_scaling") else 1
+                largura = int(janela.winfo_screenwidth() / escala)
+                altura = int(janela.winfo_screenheight() / escala) - 60
+                janela.geometry(f"{largura}x{altura}+0+0")
+    janela.after(250, maximizar)
+
+
 def centralizar_janela(janela):
     """Centraliza após a montagem da tela, limitando o tamanho ao monitor."""
     def posicionar():
