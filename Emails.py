@@ -57,6 +57,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from GeradorCotacao import (
+    centralizar_janela,
     COR_FUNDO_APP, COR_TEXTO, COR_TEXTO_SEC, COR_DESTAQUE,
     FONTE_ENTRY, FONTE_SECAO, FONTE_BOTAO, FONTE_TABELA,
     formatar_data, formatar_hora, formatar_apenas_digitos,
@@ -606,6 +607,7 @@ class EmailMixin:
         janela.title("Dados do E-mail de Cotação")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("520x460")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(janela, text="PUBLICAÇÃO:", font=FONTE_SECAO, text_color=COR_TEXTO
@@ -713,6 +715,7 @@ class EmailMixin:
         janela.title(titulo)
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("900x700")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(janela, text="ASSUNTO:", font=FONTE_SECAO, text_color=COR_TEXTO
@@ -828,6 +831,7 @@ class EmailMixin:
         janela.title("Dados do E-mail de Ordem")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("520x400")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(janela, text="Nome de quem assina o e-mail:", font=FONTE_SECAO,
@@ -882,6 +886,7 @@ class EmailMixin:
         janela.title("Observações por fornecedor (opcional)")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("900x560")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(
@@ -929,6 +934,7 @@ class EmailMixin:
         janela.title("E-mail Ordem")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("900x740")
+        centralizar_janela(janela)
         janela.grab_set()
 
         estado = {"indice": 0}
@@ -1017,6 +1023,7 @@ class EmailMixin:
         janela.title("Feriados cadastrados")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("580x580")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(

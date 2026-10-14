@@ -40,8 +40,10 @@ class Widget:
         self.valor = str(valor)
     def delete(self, *args):
         self.valor = ''
-    def get(self):
+    def get(self, *args):
         return self.valor
+    def protocol(self, *args):
+        pass
     def geometry(self, tamanho):
         self.tamanho = tamanho
     def minsize(self, *args):
@@ -50,12 +52,14 @@ class Widget:
         pass
     def grab_set(self):
         pass
+    def after_idle(self, callback):
+        pass
 
 
 class TelaPesquisaItemTest(unittest.TestCase):
-    def test_recalculo_avanco_e_quinto_vencedor(self):
+    def test_recalculo_historico_observacoes_e_todos_colocados(self):
         primeiro = item()
-        segundo = item(precos=(10, 11, 12, 13, 14), numero=2)
+        segundo = item(precos=(10, 11, 12, 13, 14, 15, 16), numero=2)
         cancelado = item(numero=3)
         cancelado['cancelado'] = True
         Widget.criados = []
@@ -85,22 +89,33 @@ class TelaPesquisaItemTest(unittest.TestCase):
             retirar.kwargs['variable'].set(True)
             clicar('RECALCULAR')
             self.assertEqual(primeiro['fornecedores_retirados'], ['F2'])
+            historico = [w for w in widgets('Fornecedor 2') if w.kwargs.get('text_color') == '#FF5555']
+            self.assertEqual(len(historico), 1)
+            self.assertIn('12.990,00', historico[0].kwargs['text'])
+            observacao = [w for w in Widget.criados if not w.destruido and w.kwargs.get('height') == 90][0]
+            observacao.insert('1.0', 'Preço retirado após análise.')
             self.assertEqual(len(widgets('colocado —')), 2)
             clicar('CONFIRMAR EMPRESA')
             self.assertTrue(widgets('ITEM 2'))
             self.assertFalse(widgets('ITEM 1'))
             self.assertEqual([e.get() for e in campos()], ['', ''])
-            self.assertEqual(len(widgets('colocado —')), 5)
-            quinto = widgets('5º colocado')[0]
+            self.assertEqual(primeiro['observacaoitem'], 'Preço retirado após análise.')
+            self.assertEqual(len(widgets('colocado —')), 7)
+            for entry, valor in zip(campos(), ('1.000,00', '2.000,00')):
+                entry.insert(0, valor)
+            clicar('RECALCULAR')
+            self.assertEqual(widgets('RETIRAR VALOR'), [])
+            self.assertEqual(segundo['pesquisas'], [1000, 2000])
+            quinto = widgets('7º colocado')[0]
             quinto.kwargs['variable'].set(quinto.kwargs['value'])
             clicar('RECALCULAR')
-            self.assertEqual(quinto.kwargs['variable'].get(), 4)
+            self.assertEqual(quinto.kwargs['variable'].get(), 6)
             clicar('CONFIRMAR EMPRESA')
             self.assertTrue(app.janela.destruido)
         app.assertions = exercitar
         with ExitStack() as stack:
             for nome in ('CTkToplevel', 'CTkFrame', 'CTkScrollableFrame', 'CTkLabel',
-                         'CTkEntry', 'CTkCheckBox', 'CTkRadioButton', 'CTkButton'):
+                         'CTkEntry', 'CTkTextbox', 'CTkCheckBox', 'CTkRadioButton', 'CTkButton'):
                 stack.enter_context(patch.object(adj.ctk, nome, Widget))
             stack.enter_context(patch.object(adj.tk, 'IntVar', Var))
             stack.enter_context(patch.object(adj.tk, 'BooleanVar', Var))
@@ -108,10 +123,33 @@ class TelaPesquisaItemTest(unittest.TestCase):
             erro = stack.enter_context(patch.object(adj.messagebox, 'showerror'))
             resultado = app._perguntar_pesquisas_precos([primeiro, segundo, cancelado])
         self.assertEqual(resultado, list(adj.TITULOS_PESQUISA_PADRAO))
-        self.assertEqual(segundo['vencedor_idx'], 4)
+        self.assertEqual(segundo['vencedor_idx'], 6)
         self.assertNotIn('referencias', cancelado)
+        justificativa = adj.montar_texto_pesquisa_justificativa([primeiro, segundo, cancelado])
+        self.assertTrue(justificativa.endswith('ITEM 1 Preço retirado após análise.'))
+        self.assertEqual(justificativa.count('ITEM 1'), 1)
         aviso.assert_called_once()
         erro.assert_not_called()
+
+    def test_observacao_na_justificativa_editavel(self):
+        primeiro = item()
+        primeiro['observacaoitem'] = 'Prazo confirmado.'
+        texto = adj.montar_texto_pesquisa_justificativa([primeiro])
+        Widget.criados = []
+        class App(adj.AdjudicacaoOrdemMixin):
+            def wait_window(self, janela):
+                caixas = [w for w in Widget.criados if w.kwargs.get('height') == 350]
+                self.teste.assertTrue(caixas[0].get().endswith('ITEM 1 Prazo confirmado.'))
+                caixas[0].insert('1.0', texto + '\nComplemento editado.')
+                botao = next(w for w in Widget.criados if w.kwargs.get('text') == 'Gerar Mapa Comparativo')
+                botao.kwargs['command']()
+        app = App()
+        app.teste = self
+        with ExitStack() as stack:
+            for nome in ('CTkToplevel', 'CTkScrollableFrame', 'CTkLabel', 'CTkTextbox', 'CTkButton'):
+                stack.enter_context(patch.object(adj.ctk, nome, Widget))
+            resultado = app._perguntar_dados_finalizacao('', '', texto)
+        self.assertTrue(resultado['texto_pesquisa'].endswith('ITEM 1 Prazo confirmado.\nComplemento editado.'))
 
     def test_todos_cancelados_sem_abrir_tela(self):
         it = item()

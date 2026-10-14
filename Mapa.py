@@ -39,6 +39,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from GeradorCotacao import (
+    centralizar_janela,
     COR_FUNDO_APP, COR_CARD, COR_TEXTO, COR_TEXTO_SEC, COR_DESTAQUE,
     FONTE_ENTRY, FONTE_SECAO, FONTE_BOTAO, FONTE_TABELA,
     normalizar_texto, extrair_nome_codigo_fornecedor, corrigir_acentuacao,
@@ -359,6 +360,7 @@ class MapaMixin:
         janela.title(f"Selecionar empresa - {nome_extraido}")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry(f"540x{140 + 36 * len(candidatos)}")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(
@@ -392,6 +394,7 @@ class MapaMixin:
         janela.title(f"Empresas listadas - Cotação {codigo_cotacao}")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("760x380")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(janela, text=f"Empresas encontradas para a COTAÇÃO {codigo_cotacao}",
@@ -530,6 +533,7 @@ class MapaMixin:
         janela.title("Cadastro de Propostas por Fornecedor")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("1200x750")
+        centralizar_janela(janela)
         janela.grab_set()
         self.janela_wizard = janela
 
@@ -937,6 +941,7 @@ class MapaMixin:
         janela.title(f"Relação por menor preço - Cotação {self._codigo_cotacao_atual}")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("1100x600")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(janela, text="Relação de propostas por menor preço",

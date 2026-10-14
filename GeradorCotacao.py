@@ -645,6 +645,23 @@ def montar_cabecalho_institucional(largura_util, linhas_texto, tamanho_logo=1.7 
     return tabela
 
 
+def centralizar_janela(janela):
+    """Centraliza após a montagem da tela, limitando o tamanho ao monitor."""
+    def posicionar():
+        janela.update_idletasks()
+        largura, altura = map(int, re.match(r"^(\d+)x(\d+)", janela.geometry()).groups())
+        tela_largura, tela_altura = janela.winfo_screenwidth(), janela.winfo_screenheight()
+        escala = janela._get_window_scaling() if hasattr(janela, "_get_window_scaling") else 1
+        largura = min(largura, max(1, int(tela_largura / escala) - 40))
+        altura = min(altura, max(1, int(tela_altura / escala) - 80))
+        minimo_largura, minimo_altura = janela.minsize()
+        janela.minsize(min(minimo_largura, largura), min(minimo_altura, altura))
+        x = max(0, int((tela_largura - largura * escala) / 2))
+        y = max(0, int((tela_altura - altura * escala) / 2))
+        janela.geometry(f"{largura}x{altura}+{x}+{y}")
+    janela.after_idle(posicionar)
+
+
 def exibir_preview_pdf_jpg(parent, caminho_jpg, titulo="Pré-visualização"):
     """Abre uma janela CTkToplevel exibindo a imagem JPG gerada a partir de
     um PDF (usada após gerar Pedido de Cotação / Mapa Comparativo / Ordem).
@@ -660,6 +677,7 @@ def exibir_preview_pdf_jpg(parent, caminho_jpg, titulo="Pré-visualização"):
         tam = (int(img.width * escala), int(img.height * escala))
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=tam)
         janela.geometry(f"{tam[0] + 40}x{tam[1] + 80}")
+        centralizar_janela(janela)
         ctk.CTkLabel(janela, image=ctk_img, text="").pack(padx=16, pady=16)
         ctk.CTkButton(janela, text="Fechar", font=FONTE_BOTAO, height=34,
                       command=janela.destroy).pack(pady=(0, 12))
@@ -707,6 +725,7 @@ class _AppCotacaoBase(ctk.CTk):
 
         self.title("Controle de Cotações - Tela de Entrada")
         self.geometry("1600x900")
+        centralizar_janela(self)
         self.configure(fg_color=COR_FUNDO_APP)
 
         self.entradas_cotacao = []          # entries da matriz de cotação
@@ -1169,6 +1188,7 @@ class _AppCotacaoBase(ctk.CTk):
         janela.title("Contatos da Ordem de Compra (por tipo de planilha)")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("760x680")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(

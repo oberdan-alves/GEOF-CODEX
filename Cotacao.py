@@ -49,6 +49,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 
 from GeradorCotacao import (
+    centralizar_janela,
     COR_FUNDO_APP, COR_TEXTO, COR_DESTAQUE,
     FONTE_ENTRY, FONTE_SECAO, FONTE_BOTAO, FONTE_TABELA,
     COR_CIANO_ADJ, COR_VERDE_ADJ, COR_AMARELO_ADJ,
@@ -822,6 +823,7 @@ class CotacaoMixin:
         janela.title(f"Ajuste do Pedido - Cotação {codigo_cotacao}")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("1150x700")
+        centralizar_janela(janela)
         janela.grab_set()
 
         ctk.CTkLabel(
