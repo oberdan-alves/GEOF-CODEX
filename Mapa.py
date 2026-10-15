@@ -583,12 +583,13 @@ class MapaMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Cadastro de Propostas por Fornecedor")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("1200x750")
+        janela.geometry(f"{min(1360, janela.winfo_screenwidth() - 40)}x"
+                        f"{min(840, janela.winfo_screenheight() - 80)}")
         centralizar_janela(janela)
         janela.grab_set()
         self.janela_wizard = janela
 
-        self.wizard_cabecalho = ctk.CTkLabel(janela, text="", font=FONTE_SECAO, text_color=COR_TEXTO)
+        self.wizard_cabecalho = ctk.CTkLabel(janela, text="", font=("Segoe UI", 16, "bold"), text_color=COR_TEXTO)
         self.wizard_cabecalho.pack(anchor="w", padx=16, pady=(14, 4))
 
         self.wizard_conteudo = ctk.CTkFrame(janela, fg_color=COR_CARD, corner_radius=10)
@@ -630,9 +631,9 @@ class MapaMixin:
 
         topo = ctk.CTkFrame(self.wizard_conteudo, fg_color="transparent")
         topo.pack(fill="x", padx=14, pady=(12, 6))
-        ctk.CTkLabel(topo, text="DATA DA PROPOSTA:", font=FONTE_SECAO,
+        ctk.CTkLabel(topo, text="DATA DA PROPOSTA:", font=("Segoe UI", 15, "bold"),
                      text_color=COR_TEXTO).pack(side="left", padx=(0, 8))
-        self.wizard_entry_data = ctk.CTkEntry(topo, font=FONTE_ENTRY, height=32, width=140,
+        self.wizard_entry_data = ctk.CTkEntry(topo, font=("Segoe UI", 15), height=32, width=140,
                                               placeholder_text="DD/MM/AAAA")
         self.wizard_entry_data.pack(side="left")
         self.wizard_entry_data.bind("<KeyRelease>", self._on_data_proposta_digitada)
@@ -640,9 +641,9 @@ class MapaMixin:
             self.wizard_entry_data.insert(0, dados_existentes.get("data_proposta", ""))
 
         self._historico_repeticao = []
-        ctk.CTkButton(topo, text="Repetir dados do primeiro item", font=FONTE_BOTAO,
+        ctk.CTkButton(topo, text="Repetir dados do primeiro item", font=("Segoe UI", 13, "bold"),
                       command=self._repetir_dados_primeiro_item).pack(side="left", padx=(40, 10))
-        self.wizard_botao_desfazer = ctk.CTkButton(topo, text="Desfazer repetição", font=FONTE_BOTAO,
+        self.wizard_botao_desfazer = ctk.CTkButton(topo, text="Desfazer repetição", font=("Segoe UI", 13, "bold"),
                       state="disabled", command=self._desfazer_repeticao)
         self.wizard_botao_desfazer.pack(side="left", padx=10)
         # Cabeçalhos e campos compartilham a mesma grade e as mesmas colunas.
@@ -651,14 +652,15 @@ class MapaMixin:
         cabecalho_cols = self.wizard_scroll
         titulos = ["ITEM", "CÓDIGO", "DESCRIÇÃO", "UN", "QTD", "QUANTIDADE", "UNITÁRIO",
                    "TOTAL", "MARCA", "PRAZO"]
-        larguras = [45, 80, 280, 50, 45, 90, 105, 100, 130, 55]
+        larguras = [45, 80, 300, 50, 45, 100, 115, 120, 145, 65]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
             self.wizard_scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
-            ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 11, "bold"),
+            ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 13, "bold"),
                          text_color=COR_TEXTO, width=w).grid(row=0, column=i, padx=2, pady=4)
 
         itens_salvos = {it["codigo"]: it for it in dados_existentes["itens"]} if dados_existentes else {}
         self._entradas_item_atual = []
+        self._item_proposta_ativo = None
 
         for i, item in enumerate(self.linhas_resultado):
             numero_item = item.get("ITEM")
@@ -670,39 +672,45 @@ class MapaMixin:
 
             linha = self.wizard_scroll
             linha_idx = 2*i+1
+            fundo = "#101010" if i % 2 == 0 else "#c4c4c4"
+            texto = "#ffffff" if i % 2 == 0 else "#161616"
+            faixa = ctk.CTkFrame(linha, fg_color=fundo, corner_radius=0,
+                                  border_width=2, border_color=fundo)
+            faixa.grid(row=linha_idx, column=0, rowspan=2, columnspan=10, sticky="nsew")
+            inicio_widgets = len(linha.winfo_children())
 
-            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=FONTE_TABELA, width=45
-                         ).grid(row=linha_idx, column=0, padx=2)
-            ctk.CTkLabel(linha, text=codigo, font=FONTE_TABELA, width=80).grid(row=linha_idx, column=1, padx=2)
-            ctk.CTkLabel(linha, text=descricao[:55], font=FONTE_TABELA, width=280, wraplength=280,
-                         anchor="w", justify="left").grid(row=linha_idx, column=2, padx=2, sticky="w")
-            ctk.CTkLabel(linha, text=un, font=FONTE_TABELA, width=40).grid(row=linha_idx, column=3, padx=2)
-            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=FONTE_TABELA, width=40
-                         ).grid(row=linha_idx, column=4, padx=2)
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=("Segoe UI", 13), width=45
+                         ).grid(row=linha_idx, pady=(4, 0), column=0, padx=4)
+            ctk.CTkLabel(linha, text=codigo, font=("Segoe UI", 13), width=80).grid(row=linha_idx, pady=(4, 0), column=1, padx=2)
+            ctk.CTkLabel(linha, text=descricao[:55], font=("Segoe UI", 13), width=300, wraplength=300,
+                         anchor="w", justify="left").grid(row=linha_idx, pady=(4, 0), column=2, padx=2, sticky="w")
+            ctk.CTkLabel(linha, text=un, font=("Segoe UI", 13), width=40).grid(row=linha_idx, pady=(4, 0), column=3, padx=2)
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=("Segoe UI", 13), width=40
+                         ).grid(row=linha_idx, pady=(4, 0), column=4, padx=2)
 
-            entry_qtd = ctk.CTkEntry(linha, width=90, height=28, font=FONTE_TABELA)
-            entry_qtd.grid(row=linha_idx, column=5, padx=2)
+            entry_qtd = ctk.CTkEntry(linha, width=100, height=34, font=("Segoe UI", 13))
+            entry_qtd.grid(row=linha_idx, pady=(4, 0), column=5, padx=2)
             entry_qtd.insert(0, formatar_quantidade_proposta(salvo.get("quantidade", qtd_cotada)))
 
-            entry_unit = ctk.CTkEntry(linha, width=105, height=28, font=FONTE_TABELA,
+            entry_unit = ctk.CTkEntry(linha, width=115, height=34, font=("Segoe UI", 13),
                                       placeholder_text="0,0000")
-            entry_unit.grid(row=linha_idx, column=6, padx=2)
+            entry_unit.grid(row=linha_idx, pady=(4, 0), column=6, padx=2)
             if salvo.get("unitario") is not None:
                 entry_unit.insert(0, formatar_unitario_proposta(salvo["unitario"]))
 
             label_total = ctk.CTkLabel(linha, text=formatar_moeda(salvo.get("total", 0)),
-                                       font=("Segoe UI", 11, "bold"), width=100)
-            label_total.grid(row=linha_idx, column=7, padx=2)
+                                       font=("Segoe UI", 13, "bold"), width=120)
+            label_total.grid(row=linha_idx, pady=(4, 0), column=7, padx=2)
 
-            entry_marca = ctk.CTkEntry(linha, width=130, height=28, font=FONTE_TABELA)
-            entry_marca.grid(row=linha_idx, column=8, padx=2)
+            entry_marca = ctk.CTkEntry(linha, width=145, height=34, font=("Segoe UI", 13))
+            entry_marca.grid(row=linha_idx, pady=(4, 0), column=8, padx=2)
             entry_marca.insert(0, salvo.get("marca", ""))
 
-            entry_prazo = ctk.CTkEntry(linha, width=55, height=28, font=FONTE_TABELA)
-            entry_prazo.grid(row=linha_idx, column=9, padx=2)
+            entry_prazo = ctk.CTkEntry(linha, width=65, height=34, font=("Segoe UI", 13))
+            entry_prazo.grid(row=linha_idx, pady=(4, 0), column=9, padx=2)
             entry_prazo.insert(0, formatar_quantidade_proposta(salvo.get("prazo", "")))
 
-            label_alerta = ctk.CTkLabel(self.wizard_scroll, text="", font=("Segoe UI", 11, "bold"),
+            label_alerta = ctk.CTkLabel(self.wizard_scroll, text="", font=("Segoe UI", 13, "bold"),
                                         text_color="#ff5c5c")
             label_alerta.grid(row=linha_idx+1, column=0, columnspan=10, sticky="w", padx=4, pady=(0, 6))
 
@@ -712,33 +720,64 @@ class MapaMixin:
                 "entry_qtd": entry_qtd, "entry_unit": entry_unit, "label_total": label_total,
                 "entry_marca": entry_marca, "entry_prazo": entry_prazo, "label_alerta": label_alerta,
                 "excedido": False,
+                "faixa": faixa, "fundo": fundo, "texto": texto,
+                "labels": [w for w in linha.winfo_children()[inicio_widgets:]
+                           if w not in (entry_qtd, entry_unit, entry_marca, entry_prazo)],
             }
             self._entradas_item_atual.append(registro)
+            self._pintar_linha_proposta(i, False)
+            for campo in ("entry_qtd", "entry_unit", "entry_marca", "entry_prazo"):
+                registro[campo].bind("<FocusIn>", lambda e, idx=i: self._ativar_linha_proposta(idx))
+                registro[campo].bind("<FocusOut>",
+                    lambda e, idx=i, chave=campo: self._sair_linha_proposta(idx, chave))
 
             entry_qtd.bind("<KeyRelease>", lambda e, idx=i: self._atualizar_total_item(idx))
             entry_unit.bind("<KeyRelease>", lambda e, idx=i: self._atualizar_total_item(idx))
             entry_prazo.bind("<KeyRelease>", lambda e, idx=i: self._mascarar_prazo(idx))
 
-            entry_qtd.bind("<FocusOut>", lambda e, idx=i: self._formatar_campo_proposta(idx, "entry_qtd"))
-            entry_unit.bind("<FocusOut>", lambda e, idx=i: self._formatar_campo_proposta(idx, "entry_unit"))
             self._atualizar_total_item(i)
 
         # ---------------- RODAPÉ / NAVEGAÇÃO ----------------
-        ctk.CTkButton(self.wizard_rodape, text="◀ Fornecedor anterior", font=FONTE_BOTAO,
+        ctk.CTkButton(self.wizard_rodape, text="◀ Fornecedor anterior", font=("Segoe UI", 13, "bold"),
                       height=34, state=("normal" if self.indice_fornecedor_atual > 0 else "disabled"),
                       command=lambda: self._ir_fornecedor(self.indice_fornecedor_atual - 1)
                       ).pack(side="left", padx=4)
-        ctk.CTkButton(self.wizard_rodape, text="Salvar / Pré-visualizar", font=FONTE_BOTAO,
+        ctk.CTkButton(self.wizard_rodape, text="Salvar / Pré-visualizar", font=("Segoe UI", 13, "bold"),
                       height=34, fg_color=COR_DESTAQUE,
                       command=self._salvar_formulario_atual).pack(side="left", padx=12)
         pode_avancar = self.indice_fornecedor_atual < total_fornecedores - 1
-        ctk.CTkButton(self.wizard_rodape, text="Fornecedor seguinte ▶", font=FONTE_BOTAO,
+        ctk.CTkButton(self.wizard_rodape, text="Fornecedor seguinte ▶", font=("Segoe UI", 13, "bold"),
                       height=34, state=("normal" if pode_avancar else "disabled"),
                       command=lambda: self._ir_fornecedor(self.indice_fornecedor_atual + 1)
                       ).pack(side="left", padx=4)
-        ctk.CTkButton(self.wizard_rodape, text="Fechar", font=FONTE_BOTAO, height=34,
+        ctk.CTkButton(self.wizard_rodape, text="Fechar", font=("Segoe UI", 13, "bold"), height=34,
                       fg_color="#7a2626", command=self._fechar_wizard_e_gerar_relacao
                       ).pack(side="right", padx=4)
+
+    def _pintar_linha_proposta(self, idx, ativo):
+        reg = self._entradas_item_atual[idx]
+        fundo = "#e2e2e2" if ativo else reg["fundo"]
+        texto = "#161616" if ativo else reg["texto"]
+        reg["faixa"].configure(fg_color=fundo, border_color="#8c8c8c" if ativo else fundo)
+        for campo in ("entry_qtd", "entry_unit", "entry_marca", "entry_prazo"):
+            reg[campo].configure(bg_color=fundo)
+        for label in reg["labels"]:
+            label.configure(fg_color=fundo)
+            if label is not reg["label_alerta"] and not (label is reg["label_total"] and reg["excedido"]):
+                label.configure(text_color=texto)
+
+    def _ativar_linha_proposta(self, idx):
+        anterior = self._item_proposta_ativo
+        if anterior is not None and anterior != idx:
+            self._pintar_linha_proposta(anterior, False)
+        self._item_proposta_ativo = idx
+        self._pintar_linha_proposta(idx, True)
+
+    def _sair_linha_proposta(self, idx, campo):
+        if campo in ("entry_qtd", "entry_unit"):
+            self._formatar_campo_proposta(idx, campo)
+        self._pintar_linha_proposta(idx, False)
+        self._item_proposta_ativo = None
 
     def _formatar_campo_proposta(self, idx, campo):
         entry = self._entradas_item_atual[idx][campo]
@@ -820,7 +859,7 @@ class MapaMixin:
         def alternar(aceso=True):
             reg = self._entradas_item_atual[idx]
             if not reg["excedido"]:
-                reg["label_total"].configure(text_color=COR_TEXTO)
+                reg["label_total"].configure(text_color=("#161616" if self._item_proposta_ativo == idx else reg["texto"]))
                 self._blink_jobs.pop(idx, None)
                 return
             reg["label_total"].configure(text_color=("#ff2b2b" if aceso else "#7a0000"))
@@ -837,7 +876,8 @@ class MapaMixin:
             except Exception:
                 pass
         if idx < len(self._entradas_item_atual):
-            self._entradas_item_atual[idx]["label_total"].configure(text_color=COR_TEXTO)
+            reg = self._entradas_item_atual[idx]
+            reg["label_total"].configure(text_color=("#161616" if self._item_proposta_ativo == idx else reg["texto"]))
 
     def _salvar_formulario_atual(self):
         data_proposta = self.wizard_entry_data.get().strip()

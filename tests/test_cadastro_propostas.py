@@ -45,6 +45,23 @@ class CadastroPropostasTest(unittest.TestCase):
         campo.delete(0, 'end')
         campo.insert(0, valor)
 
+    def test_destaque_acompanha_edicao_e_restaura_cores_alternadas(self):
+        app = self.criar_formulario()
+        primeiro, segundo, terceiro = app._entradas_item_atual
+        self.assertEqual(primeiro['faixa'].kwargs['fg_color'], terceiro['faixa'].kwargs['fg_color'])
+        self.assertNotEqual(primeiro['faixa'].kwargs['fg_color'], segundo['faixa'].kwargs['fg_color'])
+        primeiro['entry_marca'].kwargs['<FocusIn>'](None)
+        self.assertEqual(primeiro['faixa'].kwargs['fg_color'], '#e2e2e2')
+        self.assertEqual(primeiro['faixa'].kwargs['border_color'], '#8c8c8c')
+        self.assertTrue(all(label.kwargs['fg_color'] == '#e2e2e2' for label in primeiro['labels']))
+        segundo['entry_unit'].kwargs['<FocusIn>'](None)
+        self.assertEqual(primeiro['faixa'].kwargs['fg_color'], primeiro['fundo'])
+        self.escrever(segundo['entry_unit'], '1.23456')
+        segundo['entry_unit'].kwargs['<FocusOut>'](None)
+        self.assertEqual(segundo['entry_unit'].get(), '1,2346')
+        self.assertEqual(segundo['faixa'].kwargs['fg_color'], segundo['fundo'])
+        self.assertEqual(segundo['label_total'].kwargs['text_color'], segundo['texto'])
+
     def test_repetir_e_desfazer_preserva_campos_vazios_e_data(self):
         app = self.criar_formulario()
         primeiro, segundo, terceiro = app._entradas_item_atual
