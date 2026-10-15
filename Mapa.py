@@ -26,6 +26,7 @@ Mapa Comparativo e as Ordens de Compra.
 
 import os
 import json
+from xml.sax.saxutils import escape
 from decimal import Decimal, ROUND_HALF_UP
 from math import isfinite
 import tkinter as tk
@@ -214,7 +215,7 @@ def montar_ranking_itens(mapa_fornecedores, fornecedores_texto_completo, excluid
             if normalizar_texto(nome_forn) in (excluidos_por_codigo or {}).get(codigo, []):
                 continue
             if codigo not in itens_index:
-                itens_index[codigo] = {"descricao": item.get("descricao", ""),
+                itens_index[codigo] = {"numero_item": item.get("numero_item"), "descricao": item.get("descricao", ""),
                                         "un": item.get("un", ""), "propostas": []}
                 ordem_codigos.append(codigo)
             itens_index[codigo]["propostas"].append({
@@ -239,24 +240,45 @@ def gerar_pdf_ranking(caminho_pdf, codigo_cotacao, ano, ranking):
     styles = getSampleStyleSheet()
     titulo_estilo = ParagraphStyle("TituloRel", parent=styles["Title"], fontSize=15)
     story = [
-        Paragraph(f"Relação de Propostas por Menor Preço — Cotação {codigo_cotacao}/{ano}",
+        Paragraph(f"MAPA COMPARATIVO PRÉVIO RESUMIDO — Cotação {codigo_cotacao}/{ano}",
                   titulo_estilo),
         Spacer(1, 10),
     ]
 
     dados_tabela = [["ITEM", "CÓDIGO", "FORNECEDOR", "QUANTIDADE", "UNITÁRIO", "TOTAL",
                      "PRAZO", "MARCA"]]
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    larguras = [1.5 * cm, 2.2 * cm, 6 * cm, 2.6 * cm, 2.6 * cm, 2.6 * cm, 2 * cm, 3.5 * cm]
+    estilo_descricao = ParagraphStyle("ItemResumo", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=10, leading=12, textColor=colors.red)
     estilos_extra = []
     linha_idx = 1
     for numero_item, (codigo, info) in enumerate(ranking, start=1):
+        numero = formatar_quantidade_proposta(info.get("numero_item") if info.get("numero_item") is not None else numero_item)
+        descricao = " ".join(str(info.get("descricao", "")).split())
+        limite = sum(larguras[2:]) - 12
+        if stringWidth(descricao, "Helvetica-Bold", 10) > limite:
+            while descricao and stringWidth(descricao + "...", "Helvetica-Bold", 10) > limite:
+                descricao = descricao[:-1]
+            descricao = descricao.rstrip() + "..."
+        dados_tabela.append([numero, codigo, Paragraph(escape(descricao), estilo_descricao), "", "", "", "", ""])
+        estilos_extra += [("SPAN", (2, linha_idx), (7, linha_idx)),
+            ("TEXTCOLOR", (0, linha_idx), (-1, linha_idx), colors.red),
+            ("FONTNAME", (0, linha_idx), (-1, linha_idx), "Helvetica-Bold"),
+            ("BACKGROUND", (0, linha_idx), (-1, linha_idx), colors.HexColor("#fff0f0")),
+            ("ALIGN", (2, linha_idx), (7, linha_idx), "LEFT")]
+        if info["propostas"]:
+            estilos_extra.append(("NOSPLIT", (0, linha_idx), (-1, linha_idx+1)))
+        linha_idx += 1
         for posicao, proposta in enumerate(info["propostas"], start=1):
             dados_tabela.append([
-                str(numero_item), codigo, proposta["fornecedor"],
-                str(proposta["quantidade"] or ""), formatar_moeda(proposta["unitario"]),
+                f"{posicao}º COLOCADO", "", proposta["fornecedor"],
+                formatar_quantidade_proposta(proposta["quantidade"]), formatar_moeda(proposta["unitario"]),
                 formatar_moeda(proposta["total"]),
                 f'{proposta["prazo"]} dias' if proposta["prazo"] else "",
                 proposta["marca"] or "",
             ])
+            estilos_extra.append(("SPAN", (0, linha_idx), (1, linha_idx)))
             if posicao <= 3:
                 estilos_extra.append(("FONTNAME", (0, linha_idx), (-1, linha_idx), "Helvetica-Bold"))
                 estilos_extra.append(("FONTSIZE", (0, linha_idx), (-1, linha_idx),
@@ -266,8 +288,7 @@ def gerar_pdf_ranking(caminho_pdf, codigo_cotacao, ano, ranking):
             linha_idx += 1
 
     tabela = Table(dados_tabela, repeatRows=1,
-                    colWidths=[1.5 * cm, 2.2 * cm, 6 * cm, 2.6 * cm, 2.6 * cm, 2.6 * cm,
-                               2 * cm, 3.5 * cm])
+                    colWidths=larguras)
     estilo_base = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f2f2f")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -961,7 +982,7 @@ class MapaMixin:
             "Cadastro concluído",
             "Todos os fornecedores foram cadastrados e salvos.\n"
             f"Arquivo: {self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, self._codigo_cotacao_atual)}\n\n"
-            "Gerando a Relação de Propostas por Menor Preço...\n\n"
+            "Gerando o MAPA COMPARATIVO PRÉVIO RESUMIDO...\n\n"
             "Para gerar o Mapa Comparativo (imagem/PDF), use o botão ADJUDICAÇÃO na tela principal.")
         self._fechar_wizard_e_gerar_relacao()
 
@@ -1003,13 +1024,13 @@ class MapaMixin:
                 return
         ranking = montar_ranking_itens(self.mapa_fornecedores, fornecedores_texto, excluidos)
         if not ranking:
-            messagebox.showinfo("Relação por menor preço",
+            messagebox.showinfo("MAPA COMPARATIVO PRÉVIO RESUMIDO",
                                  "Nenhuma proposta com valor unitário informado foi encontrada.")
             return
 
         caminho_pdf = os.path.join(
             self._pasta_cotacao_atual,
-            f"RELACAO MENOR PRECO {self._codigo_cotacao_atual}.pdf")
+            f"MAPA COMPARATIVO PRÉVIO RESUMIDO {self._codigo_cotacao_atual}.pdf")
         try:
             gerar_pdf_ranking(caminho_pdf, self._codigo_cotacao_atual, self._ano_atual_wizard, ranking)
         except Exception as e:
@@ -1020,13 +1041,13 @@ class MapaMixin:
 
     def _mostrar_relacao_menor_preco(self, ranking, caminho_pdf):
         janela = ctk.CTkToplevel(self)
-        janela.title(f"Relação por menor preço - Cotação {self._codigo_cotacao_atual}")
+        janela.title(f"MAPA COMPARATIVO PRÉVIO RESUMIDO - Cotação {self._codigo_cotacao_atual}")
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry("1100x600")
         centralizar_janela(janela)
         janela.grab_set()
 
-        ctk.CTkLabel(janela, text="Relação de propostas por menor preço",
+        ctk.CTkLabel(janela, text="MAPA COMPARATIVO PRÉVIO RESUMIDO",
                      font=FONTE_SECAO, text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(14, 2))
         ctk.CTkLabel(janela, text=caminho_pdf, font=("Segoe UI", 11),
                      text_color=COR_TEXTO_SEC).pack(anchor="w", padx=16, pady=(0, 8))
@@ -1036,25 +1057,33 @@ class MapaMixin:
 
         titulos = ["ITEM", "CÓDIGO", "FORNECEDOR", "QTD", "UNITÁRIO", "TOTAL", "PRAZO", "MARCA"]
         larguras = [45, 80, 260, 55, 90, 100, 60, 130]
-        cabecalho = ctk.CTkFrame(scroll, fg_color="#1b1b1b")
-        cabecalho.pack(fill="x", pady=(0, 4))
         for i, (t, w) in enumerate(zip(titulos, larguras)):
-            ctk.CTkLabel(cabecalho, text=t, font=("Segoe UI", 11, "bold"), width=w
+            scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
+            ctk.CTkLabel(scroll, text=t, font=("Segoe UI", 11, "bold"), width=w
                          ).grid(row=0, column=i, padx=2, pady=4)
-
+        linha_idx = 1
         for numero_item, (codigo, info) in enumerate(ranking, start=1):
+            numero = formatar_quantidade_proposta(info.get("numero_item") if info.get("numero_item") is not None else numero_item)
+            ctk.CTkLabel(scroll, text=numero, font=("Segoe UI", 13, "bold"), text_color="#FF5555").grid(row=linha_idx, column=0, padx=2, pady=(8, 2))
+            ctk.CTkLabel(scroll, text=codigo, font=("Segoe UI", 13, "bold"), text_color="#FF5555").grid(row=linha_idx, column=1, padx=2, pady=(8, 2))
+            descricao = " ".join(str(info.get("descricao", "")).split())
+            ctk.CTkLabel(scroll, text=descricao[:130] + ("..." if len(descricao) > 130 else ""),
+                font=("Segoe UI", 13, "bold"), text_color="#FF5555", anchor="w", wraplength=800
+                ).grid(row=linha_idx, column=2, columnspan=6, padx=2, pady=(8, 2), sticky="w")
+            linha_idx += 1
             for pos, p in enumerate(info["propostas"], start=1):
                 destaque = pos <= 3
                 cor = "#8ee08e" if pos == 1 else (COR_TEXTO if not destaque else "#e8e08e")
                 fonte = ("Segoe UI", 13 if pos == 1 else 11, "bold") if destaque else FONTE_TABELA
-                linha = ctk.CTkFrame(scroll, fg_color="transparent")
-                linha.pack(fill="x", pady=1)
-                valores = [str(numero_item), codigo, p["fornecedor"], str(p["quantidade"] or ""),
+                ctk.CTkLabel(scroll, text=f"{pos}º COLOCADO", font=fonte, text_color=cor
+                             ).grid(row=linha_idx, column=0, columnspan=2, padx=2)
+                valores = [p["fornecedor"], formatar_quantidade_proposta(p["quantidade"]),
                            formatar_moeda(p["unitario"]), formatar_moeda(p["total"]),
                            f'{p["prazo"]}d' if p["prazo"] else "", p["marca"] or ""]
-                for i, (v, w) in enumerate(zip(valores, larguras)):
-                    ctk.CTkLabel(linha, text=v, font=fonte, text_color=cor, width=w,
-                                 anchor="w" if i == 2 else "center").grid(row=0, column=i, padx=2)
+                for i, (v, w) in enumerate(zip(valores, larguras[2:]), 2):
+                    ctk.CTkLabel(scroll, text=v, font=fonte, text_color=cor, width=w,
+                                 anchor="w" if i == 2 else "center", wraplength=w).grid(row=linha_idx, column=i, padx=2)
+                linha_idx += 1
 
         ctk.CTkButton(janela, text="Fechar", font=FONTE_BOTAO, height=34,
                       command=janela.destroy).pack(pady=(0, 14))

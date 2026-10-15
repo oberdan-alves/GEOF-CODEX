@@ -1176,7 +1176,7 @@ class AdjudicacaoOrdemMixin:
         ranking = montar_ranking_itens(self.mapa_fornecedores, fornecedores_texto, excluidos)
         try:
             gerar_pdf_ranking(os.path.join(self._pasta_cotacao_atual,
-                f"RELACAO MENOR PRECO {self._codigo_cotacao_atual}.pdf"),
+                f"MAPA COMPARATIVO PRÉVIO RESUMIDO {self._codigo_cotacao_atual}.pdf"),
                 self._codigo_cotacao_atual, self._ano_atual_wizard, ranking)
         except Exception as e:
             messagebox.showwarning("Relação por menor preço", f"Mapa salvo, mas não foi possível atualizar a relação de preços: {e}")
