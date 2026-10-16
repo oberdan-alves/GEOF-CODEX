@@ -1529,9 +1529,14 @@ class AdjudicacaoOrdemMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Itens cancelados")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("900x600")
-        centralizar_janela(janela)
+        janela.geometry("1200x800")
+        janela.minsize(800, 500)
+        maximizar_janela(janela)
         janela.grab_set()
+
+        # Reserva o rodapé antes do conteúdo expansível para manter os botões visíveis.
+        rodape = ctk.CTkFrame(janela, fg_color="transparent")
+        rodape.pack(side="bottom", fill="x", padx=16, pady=(8, 16))
 
         ctk.CTkLabel(
             janela,
@@ -1541,7 +1546,7 @@ class AdjudicacaoOrdemMixin:
             font=("Segoe UI", 20, "bold"), text_color=COR_TEXTO, wraplength=850, justify="left"
         ).pack(anchor="w", padx=16, pady=(16, 8))
 
-        scroll = ctk.CTkScrollableFrame(janela, fg_color="#161616", height=460)
+        scroll = ctk.CTkScrollableFrame(janela, fg_color="#161616", height=200)
         scroll.pack(fill="both", expand=True, padx=16, pady=(0, 10))
 
         variaveis = {}
@@ -1566,10 +1571,10 @@ class AdjudicacaoOrdemMixin:
             if salvar():
                 janela.destroy()
 
-        ctk.CTkButton(janela, text="LIMPAR DADOS", font=("Segoe UI", 20),
-                      height=40, command=limpar).pack(pady=8)
-        ctk.CTkButton(janela, text="Confirmar e continuar", font=FONTE_BOTAO, height=36,
-                      fg_color=COR_DESTAQUE, command=confirmar).pack(pady=(0, 16))
+        ctk.CTkButton(rodape, text="LIMPAR DADOS", font=("Segoe UI", 20),
+                      height=44, command=limpar).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(rodape, text="Confirmar e continuar", font=FONTE_BOTAO, height=44,
+                      fg_color=COR_DESTAQUE, command=confirmar).pack(side="right")
         janela.protocol("WM_DELETE_WINDOW", confirmar)
         self.wait_window(janela)
         return mapa_itens
