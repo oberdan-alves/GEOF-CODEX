@@ -101,7 +101,7 @@ class TelaPesquisaItemTest(unittest.TestCase):
             self.assertTrue(widgets('ITEM 1'))  # valores novos exigem recálculo
             clicar('RECALCULAR')
             self.assertEqual(primeiro['referencias']['minimo'], 8000)
-            retirar = widgets('RETIRAR VALOR')[0]
+            retirar = widgets('RETIRAR VALOR — Fornecedor 2')[0]
             self.assertIn('Fornecedor 2', retirar.kwargs['text'])
             retirar.kwargs['variable'].set(True)
             clicar('RECALCULAR')
@@ -130,12 +130,24 @@ class TelaPesquisaItemTest(unittest.TestCase):
             for entry, valor in zip(campos(), ('1.000,00', '2.000,00')):
                 entry.insert(0, valor)
             clicar('RECALCULAR')
-            self.assertEqual(widgets('RETIRAR VALOR'), [])
+            self.assertEqual(len(widgets('RETIRAR VALOR —')), 7)
             self.assertEqual(segundo['pesquisas'], [1000, 2000])
-            quinto = widgets('7º colocado')[0]
+            retirar = widgets('RETIRAR VALOR — Fornecedor 0')[0]
+            retirar.kwargs['variable'].set(True)
+            clicar('RECALCULAR')  # exige justificativa mesmo com preço válido
+            self.assertEqual(len(segundo['propostas']), 7)
+            motivos = [w for w in Widget.criados if not w.destruido and
+                       w.kwargs.get('placeholder_text') == 'Justificativa da retirada (obrigatória)']
+            motivos[0].insert(0, 'Proposta de item em desacordo com o solicitado no TR')
+            clicar('RECALCULAR')
+            self.assertEqual(segundo['fornecedores_retirados'], ['F0'])
+            self.assertEqual(segundo['precos_retirados'][0]['justificativa'], motivos[0].get())
+            self.assertAlmostEqual(segundo['referencias']['media'], (11+12+13+14+15+16+1000+2000)/8)
+            self.assertTrue(widgets('FORNECEDORES RETIRADOS — ANÁLISE'))
+            quinto = widgets('6º colocado')[0]
             quinto.kwargs['variable'].set(quinto.kwargs['value'])
             clicar('RECALCULAR')
-            self.assertEqual(quinto.kwargs['variable'].get(), 6)
+            self.assertEqual(quinto.kwargs['variable'].get(), 5)
             clicar('CONFIRMAR EMPRESA')
             self.assertTrue(app.janela.destruido)
         app.assertions = exercitar
@@ -149,12 +161,12 @@ class TelaPesquisaItemTest(unittest.TestCase):
             erro = stack.enter_context(patch.object(adj.messagebox, 'showerror'))
             resultado = app._perguntar_pesquisas_precos([primeiro, segundo, cancelado])
         self.assertEqual(resultado, list(adj.TITULOS_PESQUISA_PADRAO))
-        self.assertEqual(segundo['vencedor_idx'], 6)
+        self.assertEqual(segundo['vencedor_idx'], 5)
         self.assertNotIn('referencias', cancelado)
         justificativa = adj.montar_texto_pesquisa_justificativa([primeiro, segundo, cancelado])
         self.assertTrue(justificativa.endswith('ITEM 1 Preço retirado após análise.'))
         self.assertEqual(justificativa.count('ITEM 1'), 1)
-        aviso.assert_called_once()
+        self.assertEqual(aviso.call_count, 2)
         erro.assert_not_called()
 
     def test_observacao_na_justificativa_editavel(self):
