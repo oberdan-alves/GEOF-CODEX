@@ -1137,7 +1137,9 @@ class AdjudicacaoOrdemMixin:
             return
         for item in mapa_itens:
             decisao = decisoes.get(str(item["numero_item"]), {})
-            for campo in ("pesquisas", "precos_retirados", "observacaoitem", "cancelado"):
+            item["propostas_originais"] = list(item["propostas"])
+            for campo in ("pesquisas", "precos_retirados", "observacaoitem", "cancelado",
+                          "titulos_pesquisa", "justificativas_retirada", "retiradas_pendentes"):
                 if campo in decisao:
                     item[campo] = decisao[campo]
             aplicar_retiradas(item, decisao.get("fornecedores_retirados", []))
@@ -1202,11 +1204,38 @@ class AdjudicacaoOrdemMixin:
 
         exibir_preview_pdf_jpg(self, caminho_jpg, "Mapa Comparativo")
 
+    def _salvar_campos_telas(self, itens, campos):
+        """Atualiza apenas os campos da tela, sem apagar decisões de outros itens."""
+        caminho = self._caminho_arquivo_mapa_empresas(
+            self._pasta_cotacao_atual, self._codigo_cotacao_atual)
+        try:
+            with open(caminho, "r", encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            decisoes = dados.setdefault("decisoes_itens", {})
+            for item in itens:
+                decisao = decisoes.setdefault(str(item["numero_item"]), {})
+                decisao["codigo"] = item["codigo"]
+                for campo in campos:
+                    decisao[campo] = item.get(campo)
+            temporario = caminho + ".tmp"
+            with open(temporario, "w", encoding="utf-8") as arquivo:
+                json.dump(dados, arquivo, ensure_ascii=False, indent=2)
+            os.replace(temporario, caminho)
+            return True
+        except Exception as erro:
+            messagebox.showerror("Erro ao salvar tela", str(erro))
+            return False
+
     def _perguntar_pesquisas_precos(self, mapa_itens):
         """Fecha pesquisa, revisão e vencedor de um item antes de avançar."""
         ativos = [item for item in mapa_itens if not item.get("cancelado")]
         if not ativos:
             return list(TITULOS_PESQUISA_PADRAO)
+        for item in ativos:
+            item.setdefault("propostas_originais", list(item["propostas"]))
+            for campo in ("fornecedores_retirados", "precos_retirados", "retiradas_pendentes"):
+                item.setdefault(campo, [])
+            item.setdefault("justificativas_retirada", {})
         janela = ctk.CTkToplevel(self)
         janela.title("Pesquisa de preços por item — revisão e vencedor")
         janela.geometry("1280x940")
@@ -1308,6 +1337,7 @@ class AdjudicacaoOrdemMixin:
                     var = tk.BooleanVar(master=janela, value=False)
                     ctk.CTkCheckBox(validos, text=f"RETIRAR VALOR — {nome}: {formatar_pesquisa(valor)}",
                         variable=var, font=fonte, height=32).pack(anchor="w", padx=10, pady=5)
+                    var.set([chave, identificador] in item.get("retiradas_pendentes", []))
                     selecoes.append((chave, identificador, var))
                 if not encontrados:
                     ctk.CTkLabel(validos, text="Nenhum fornecedor fora deste limite.", font=fonte).pack(anchor="w", padx=10)
@@ -1331,13 +1361,14 @@ class AdjudicacaoOrdemMixin:
                     variable=vencedor, value=pos, font=fonte, height=30).pack(side="left", padx=(8, 12))
                 chave = proposta.get("fornecedor_chave", proposta["fornecedor"])
                 grupo = "analise"
-                var = tk.BooleanVar(master=janela, value=False)
+                var = tk.BooleanVar(master=janela, value=[grupo, chave] in item.get("retiradas_pendentes", []))
                 ctk.CTkCheckBox(linha, text="RETIRAR VALOR", variable=var,
                     font=fonte, height=32).pack(side="left", padx=12)
                 motivo = ctk.CTkEntry(linha, placeholder_text="Justificativa da retirada (obrigatória)",
                                       font=fonte, width=600)
                 motivo.pack(side="left", fill="x", expand=True, padx=(12, 8))
-                motivo.insert(0, "Proposta enviada não atende ao descritivo do Termo de Referência conforme")
+                motivo.insert(0, item.get("justificativas_retirada", {}).get(chave,
+                    "Proposta enviada não atende ao descritivo do Termo de Referência conforme"))
                 selecoes.append((grupo, chave, var))
                 justificativas[chave] = motivo
             historico_analise = [p for p in item.get("precos_retirados", []) if p.get("grupo") == "analise"]
@@ -1374,6 +1405,8 @@ class AdjudicacaoOrdemMixin:
                             else "Preço acima de 50% da referência" if grupo == "superior"
                             else "Preço abaixo de 50% da referência")))
             item["pesquisas"] = precos
+            item["retiradas_pendentes"] = []
+            item["justificativas_retirada"] = {chave: campo.get() for chave, campo in justificativas.items()}
             aplicar_retiradas(item, fornecedores)
             for i, entry in enumerate(entradas):
                 entry.delete(0, "end")
@@ -1395,6 +1428,9 @@ class AdjudicacaoOrdemMixin:
             item.setdefault("pesquisas", [None, None])
             recalcular_referencias(item)
             vencedor.set(item.get("vencedor_idx") or 0)
+            for campo, texto in zip(titulos, item.get("titulos_pesquisa") or nomes()):
+                campo.delete(0, "end")
+                campo.insert(0, texto)
             for i, entry in enumerate(entradas):
                 entry.delete(0, "end")
                 entry.insert(0, formatar_pesquisa(item["pesquisas"][i]))
@@ -1410,6 +1446,39 @@ class AdjudicacaoOrdemMixin:
             voltar_botao.configure(state="normal" if estado["indice"] else "disabled")
             avancar.configure(text="CONFIRMAR EMPRESA VENCEDORA POR ITEM E PRÓXIMO" if estado["indice"] < len(ativos)-1 else "CONFIRMAR EMPRESA VENCEDORA POR ITEM E CONCLUIR")
 
+        campos_pesquisa = ("pesquisas", "titulos_pesquisa", "observacaoitem", "vencedor_idx",
+                           "fornecedores_retirados", "precos_retirados", "referencias",
+                           "justificativas_retirada", "retiradas_pendentes")
+
+        def salvar_atual():
+            precos = ler()
+            if precos is None:
+                return False
+            item = atuais()
+            item["pesquisas"] = precos
+            recalcular_referencias(item)
+            item["titulos_pesquisa"] = nomes()
+            item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
+            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["justificativas_retirada"] = {chave: campo.get() for chave, campo in justificativas.items()}
+            item["retiradas_pendentes"] = [[grupo, chave] for grupo, chave, var in selecoes if var.get()]
+            return self._salvar_campos_telas([item], campos_pesquisa)
+
+        def fechar():
+            if salvar_atual():
+                janela.destroy()
+
+        def limpar():
+            item = atuais()
+            item["propostas"] = list(item["propostas_originais"])
+            item.update(pesquisas=[None, None], titulos_pesquisa=list(TITULOS_PESQUISA_PADRAO),
+                        observacaoitem="", vencedor_idx=0 if item["propostas"] else None,
+                        fornecedores_retirados=[], precos_retirados=[],
+                        justificativas_retirada={}, retiradas_pendentes=[])
+            recalcular_referencias(item)
+            self._salvar_campos_telas([item], campos_pesquisa)
+            mostrar_item()
+
         def confirmar_item():
             precos = ler()
             if precos is None:
@@ -1420,6 +1489,8 @@ class AdjudicacaoOrdemMixin:
             item = atuais()
             item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
             item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
+            if not salvar_atual():
+                return
             if estado["indice"] == len(ativos)-1:
                 resultado.extend(nomes())
                 janela.destroy()
@@ -1433,6 +1504,8 @@ class AdjudicacaoOrdemMixin:
             item = atuais()
             item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
             item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
+            if not salvar_atual():
+                return
             estado["indice"] -= 1
             mostrar_item()
 
@@ -1440,6 +1513,8 @@ class AdjudicacaoOrdemMixin:
         voltar_botao = ctk.CTkButton(botoes, text="VOLTAR", font=fonte, height=44, width=120, command=voltar)
         voltar_botao.pack(side="left", padx=(0, 12))
         ctk.CTkButton(botoes, text="RECALCULAR", font=destaque, height=44, width=200, command=recalcular).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(botoes, text="LIMPAR DADOS", font=fonte, command=limpar).pack(side="left", padx=8)
+        janela.protocol("WM_DELETE_WINDOW", fechar)
         avancar = ctk.CTkButton(botoes, text="", font=fonte, height=44, command=confirmar_item)
         avancar.pack(side="left", fill="x", expand=True)
         mostrar_item()
@@ -1463,25 +1538,36 @@ class AdjudicacaoOrdemMixin:
             text="Marque os itens que devem aparecer como CANCELADO no Mapa Comparativo "
                  "(os valores e fornecedores desse item ficam suprimidos, mesmo que já tenham "
                  "sido lançados). Deixe todos desmarcados se nenhum item foi cancelado.",
-            font=FONTE_SECAO, text_color=COR_TEXTO, wraplength=850, justify="left"
+            font=("Segoe UI", 20, "bold"), text_color=COR_TEXTO, wraplength=850, justify="left"
         ).pack(anchor="w", padx=16, pady=(16, 8))
 
         scroll = ctk.CTkScrollableFrame(janela, fg_color="#161616", height=460)
         scroll.pack(fill="both", expand=True, padx=16, pady=(0, 10))
 
         variaveis = {}
+        def salvar():
+            for item in mapa_itens:
+                item["cancelado"] = variaveis[item["numero_item"]].get()
+            return self._salvar_campos_telas(mapa_itens, ("cancelado",))
+
+        def limpar():
+            for var in variaveis.values():
+                var.set(False)
+            salvar()
+
         for item in mapa_itens:
             var = tk.BooleanVar(value=bool(item.get("cancelado", False)))
             variaveis[item["numero_item"]] = var
             texto = f"Item {item['numero_item']} — {item['codigo']} — {item['descricao'][:75]}"
-            ctk.CTkCheckBox(scroll, text=texto, variable=var, font=FONTE_TABELA,
+            ctk.CTkCheckBox(scroll, text=texto, variable=var, font=("Segoe UI", 20), height=36, command=salvar,
                             text_color=COR_TEXTO).pack(anchor="w", padx=10, pady=5)
 
         def confirmar():
-            for item in mapa_itens:
-                item["cancelado"] = variaveis[item["numero_item"]].get()
-            janela.destroy()
+            if salvar():
+                janela.destroy()
 
+        ctk.CTkButton(janela, text="LIMPAR DADOS", font=("Segoe UI", 20),
+                      height=40, command=limpar).pack(pady=8)
         ctk.CTkButton(janela, text="Confirmar e continuar", font=FONTE_BOTAO, height=36,
                       fg_color=COR_DESTAQUE, command=confirmar).pack(pady=(0, 16))
         janela.protocol("WM_DELETE_WINDOW", confirmar)
@@ -1565,6 +1651,9 @@ class AdjudicacaoOrdemMixin:
                 "precos_retirados": item.get("precos_retirados", []),
                 "observacaoitem": item.get("observacaoitem", ""),
                 "pesquisas": item.get("pesquisas", []),
+                "titulos_pesquisa": item.get("titulos_pesquisa", list(TITULOS_PESQUISA_PADRAO)),
+                "justificativas_retirada": item.get("justificativas_retirada", {}),
+                "retiradas_pendentes": item.get("retiradas_pendentes", []),
                 "referencias": item.get("referencias", {}),
             }
             for item in mapa_itens

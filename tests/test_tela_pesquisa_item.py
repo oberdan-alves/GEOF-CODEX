@@ -44,8 +44,8 @@ class Widget:
         self.valor = ''
     def get(self, *args):
         return self.valor
-    def protocol(self, *args):
-        pass
+    def protocol(self, evento, callback):
+        self.kwargs[evento] = callback
     def geometry(self, tamanho):
         self.tamanho = tamanho
     def minsize(self, *args):
@@ -61,6 +61,11 @@ class Widget:
 
 
 class TelaPesquisaItemTest(unittest.TestCase):
+    def setUp(self):
+        salvamento = patch.object(adj.AdjudicacaoOrdemMixin, '_salvar_campos_telas', return_value=True)
+        self.salvar = salvamento.start()
+        self.addCleanup(salvamento.stop)
+
     def test_recalculo_historico_observacoes_e_todos_colocados(self):
         primeiro = item(pesquisas=(None, None))
         primeiro['descricao'] = 'Descrição completa do serviço ' * 50
@@ -233,6 +238,93 @@ class TelaPesquisaItemTest(unittest.TestCase):
             resultado = adj.AdjudicacaoOrdemMixin()._perguntar_pesquisas_precos([it])
         janela.assert_not_called()
         self.assertEqual(resultado, list(adj.TITULOS_PESQUISA_PADRAO))
+
+
+class PersistenciaTelasTest(unittest.TestCase):
+    def test_fechar_reabrir_editar_limpar_sem_apagar_outra_tela(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        class App(adj.AdjudicacaoOrdemMixin):
+            def _caminho_arquivo_mapa_empresas(self, *args):
+                return self.arquivo
+            def wait_window(self, janela):
+                self.exercitar(janela)
+        def widgets(texto):
+            return [w for w in Widget.criados if not w.destruido and
+                    texto in w.kwargs.get('text', '')]
+        def clicar(texto):
+            widgets(texto)[0].kwargs['command']()
+        def valores():
+            return [w for w in Widget.criados if not w.destruido and
+                    w.kwargs.get('font') == ('Segoe UI', 20) and 'placeholder_text' not in w.kwargs
+                    and w.kwargs.get('height') == 38]
+        with tempfile.TemporaryDirectory() as pasta, ExitStack() as stack:
+            for nome in ('CTkToplevel', 'CTkFrame', 'CTkScrollableFrame', 'CTkLabel',
+                         'CTkEntry', 'CTkTextbox', 'CTkCheckBox', 'CTkRadioButton', 'CTkButton'):
+                stack.enter_context(patch.object(adj.ctk, nome, Widget))
+            stack.enter_context(patch.object(adj.tk, 'IntVar', Var))
+            stack.enter_context(patch.object(adj.tk, 'BooleanVar', Var))
+            stack.enter_context(patch.object(adj, 'centralizar_janela'))
+            app = App()
+            app._pasta_cotacao_atual, app._codigo_cotacao_atual = pasta, '1'
+            app.arquivo = str(Path(pasta) / 'mapa.json')
+            Path(app.arquivo).write_text(json.dumps({'fornecedores': {'original': {}},
+                'decisoes_itens': {'1': {'cancelado': False}, '2': {'observacaoitem': 'Preservar'}}}))
+            def dados():
+                return json.loads(Path(app.arquivo).read_text())
+            primeiro = item()
+            def fechar(janela):
+                valores()[0].delete(0, 'end')
+                valores()[0].insert(0, '1234,56')
+                janela.kwargs['WM_DELETE_WINDOW']()
+            app.exercitar = fechar
+            Widget.criados = []
+            app._perguntar_pesquisas_precos([primeiro])
+            self.assertEqual(dados()['decisoes_itens']['1']['pesquisas'][0], 1234.56)
+            # Simula reconstrução dos itens após fechar e reabrir a adjudicação.
+            segundo = item()
+            segundo.update(dados()['decisoes_itens']['1'])
+            def reabrir(janela):
+                self.assertEqual(valores()[0].get(), '1.234,56')
+                valores()[0].delete(0, 'end')
+                valores()[0].insert(0, '2222')
+                clicar('RECALCULAR')
+                clicar('CONFIRMAR EMPRESA')
+            app.exercitar = reabrir
+            Widget.criados = []
+            app._perguntar_pesquisas_precos([segundo])
+            self.assertEqual(dados()['decisoes_itens']['1']['pesquisas'][0], 2222)
+            segundo['cancelado'] = True
+            app._salvar_campos_telas([segundo], ('cancelado',))
+            segundo['cancelado'] = False  # permite exercitar a pesquisa isoladamente
+            adj.aplicar_retiradas(segundo, ['F2'])
+            def limpar_pesquisa(janela):
+                clicar('LIMPAR DADOS')
+                self.assertEqual([v.get() for v in valores()], ['', ''])
+                self.assertEqual(len(segundo['propostas']), 3)
+                self.assertEqual(segundo['fornecedores_retirados'], [])
+                janela.kwargs['WM_DELETE_WINDOW']()
+            app.exercitar = limpar_pesquisa
+            Widget.criados = []
+            app._perguntar_pesquisas_precos([segundo])
+            self.assertTrue(dados()['decisoes_itens']['1']['cancelado'])
+            self.assertEqual(dados()['decisoes_itens']['1']['pesquisas'], [None, None])
+            segundo.update(dados()['decisoes_itens']['1'])
+            def limpar_cancelados(janela):
+                checkbox = widgets('Item 1')[0]
+                self.assertTrue(checkbox.kwargs['variable'].get())
+                self.assertEqual(checkbox.kwargs['font'], ('Segoe UI', 20))
+                clicar('LIMPAR DADOS')
+                self.assertFalse(checkbox.kwargs['variable'].get())
+                janela.kwargs['WM_DELETE_WINDOW']()
+            app.exercitar = limpar_cancelados
+            Widget.criados = []
+            app._perguntar_itens_cancelados([segundo])
+            self.assertFalse(dados()['decisoes_itens']['1']['cancelado'])
+            self.assertEqual(dados()['decisoes_itens']['1']['pesquisas'], [None, None])
+            self.assertEqual(dados()['decisoes_itens']['2'], {'observacaoitem': 'Preservar'})
+            self.assertEqual(dados()['fornecedores'], {'original': {}})
 
 
 if __name__ == '__main__':
