@@ -130,14 +130,18 @@ class TelaPesquisaItemTest(unittest.TestCase):
             for entry, valor in zip(campos(), ('1.000,00', '2.000,00')):
                 entry.insert(0, valor)
             clicar('RECALCULAR')
-            self.assertEqual(len(widgets('RETIRAR VALOR —')), 7)
+            self.assertEqual(len([w for w in widgets('RETIRAR VALOR') if 'variable' in w.kwargs]), 7)
             self.assertEqual(segundo['pesquisas'], [1000, 2000])
-            retirar = widgets('RETIRAR VALOR — Fornecedor 0')[0]
+            retirar = next(w for w in widgets('RETIRAR VALOR') if w.kwargs.get('text') == 'RETIRAR VALOR')
             retirar.kwargs['variable'].set(True)
-            clicar('RECALCULAR')  # exige justificativa mesmo com preço válido
-            self.assertEqual(len(segundo['propostas']), 7)
             motivos = [w for w in Widget.criados if not w.destruido and
                        w.kwargs.get('placeholder_text') == 'Justificativa da retirada (obrigatória)']
+            self.assertEqual(motivos[0].get(), 'Proposta enviada não atende ao descritivo do Termo de Referência conforme')
+            self.assertIs(retirar.parent, motivos[0].parent)
+            self.assertEqual(motivos[0].pack_config['side'], 'left')
+            motivos[0].delete(0, 'end')
+            clicar('RECALCULAR')
+            self.assertEqual(len(segundo['propostas']), 7)
             motivos[0].insert(0, 'Proposta de item em desacordo com o solicitado no TR')
             clicar('RECALCULAR')
             self.assertEqual(segundo['fornecedores_retirados'], ['F0'])
@@ -168,6 +172,39 @@ class TelaPesquisaItemTest(unittest.TestCase):
         self.assertEqual(justificativa.count('ITEM 1'), 1)
         self.assertEqual(aviso.call_count, 2)
         erro.assert_not_called()
+
+    def test_retiradas_limites_independentes_sem_duplicar_historico(self):
+        primeiro = item(precos=(1, 100, 1000), pesquisas=(100, 100))
+        Widget.criados = []
+        def vivos():
+            return [w for w in Widget.criados if not w.destruido]
+        class App(adj.AdjudicacaoOrdemMixin):
+            def wait_window(app, janela):
+                limites = [w for w in vivos() if w.kwargs.get('text', '').startswith('RETIRAR VALOR —')]
+                self.assertEqual(len(limites), 2)
+                for checkbox in limites:
+                    checkbox.kwargs['variable'].set(True)
+                # O mesmo fornecedor também pode ser marcado na classificação.
+                checkbox = next(w for w in vivos() if w.kwargs.get('text') == 'RETIRAR VALOR')
+                checkbox.kwargs['variable'].set(True)
+                next(w for w in vivos() if w.kwargs.get('text') == 'RECALCULAR').kwargs['command']()
+                self.assertEqual(len(primeiro['precos_retirados']), 2)
+                self.assertEqual({p['grupo'] for p in primeiro['precos_retirados']}, {'superior', 'inferior'})
+                self.assertEqual(primeiro['referencias']['media'], 100)
+                for sufixo, fornecedor in [('ACIMA', 'Fornecedor 2'), ('ABAIXO', 'Fornecedor 0')]:
+                    titulo = next(w for w in vivos() if w.kwargs.get('text') == 'FORNECEDORES RETIRADOS - 50% ' + sufixo)
+                    registros = [w.kwargs.get('text', '') for w in titulo.parent.children]
+                    self.assertTrue(any(fornecedor in texto for texto in registros))
+                    outro = 'Fornecedor 0' if sufixo == 'ACIMA' else 'Fornecedor 2'
+                    self.assertFalse(any(outro in texto for texto in registros))
+                next(w for w in vivos() if w.kwargs.get('text', '').startswith('CONFIRMAR EMPRESA')).kwargs['command']()
+        with ExitStack() as stack:
+            for nome in ('CTkToplevel', 'CTkFrame', 'CTkScrollableFrame', 'CTkLabel',
+                         'CTkEntry', 'CTkTextbox', 'CTkCheckBox', 'CTkRadioButton', 'CTkButton'):
+                stack.enter_context(patch.object(adj.ctk, nome, Widget))
+            stack.enter_context(patch.object(adj.tk, 'IntVar', Var))
+            stack.enter_context(patch.object(adj.tk, 'BooleanVar', Var))
+            App()._perguntar_pesquisas_precos([primeiro])
 
     def test_observacao_na_justificativa_editavel(self):
         primeiro = item()

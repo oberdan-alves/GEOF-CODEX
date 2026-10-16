@@ -1302,11 +1302,13 @@ class AdjudicacaoOrdemMixin:
                 removidos = ctk.CTkFrame(grupo, fg_color="transparent")
                 removidos.pack(side="left", fill="both", expand=True, padx=6)
                 ctk.CTkLabel(validos, text=f"{titulo} — limite {formatar_pesquisa(limite) or '—'}", font=destaque).pack(anchor="w")
-                ctk.CTkLabel(removidos, text="FORNECEDORES RETIRADOS", font=destaque, text_color="#FF5555").pack(anchor="w")
+                ctk.CTkLabel(removidos, text=f"FORNECEDORES RETIRADOS - 50% {'ACIMA' if acima else 'ABAIXO'}", font=destaque, text_color="#FF5555").pack(anchor="w")
                 encontrados = [] if limite is None else [v for v in valores if (v[1] > limite if acima else v[1] < limite)]
                 for nome, valor, _, identificador in encontrados:
-                    ctk.CTkLabel(validos, text=f"{nome}: {formatar_pesquisa(valor)}",
-                        font=fonte).pack(anchor="w", padx=10, pady=5)
+                    var = tk.BooleanVar(master=janela, value=False)
+                    ctk.CTkCheckBox(validos, text=f"RETIRAR VALOR — {nome}: {formatar_pesquisa(valor)}",
+                        variable=var, font=fonte, height=32).pack(anchor="w", padx=10, pady=5)
+                    selecoes.append((chave, identificador, var))
                 if not encontrados:
                     ctk.CTkLabel(validos, text="Nenhum fornecedor fora deste limite.", font=fonte).pack(anchor="w", padx=10)
                 historico = [p for p in item.get("precos_retirados", []) if p.get("grupo") == chave]
@@ -1317,28 +1319,25 @@ class AdjudicacaoOrdemMixin:
                     ctk.CTkLabel(removidos, text="Nenhum fornecedor retirado.", font=fonte, text_color="#FF5555").pack(anchor="w", padx=10)
             for widget in rodape.winfo_children():
                 widget.destroy()
-            ctk.CTkLabel(rodape, text="CLASSIFICAÇÃO ATUAL — selecione a empresa vencedora deste item ou RETIRAR VALOR", font=destaque).pack(anchor="w", padx=12, pady=8)
+            ctk.CTkLabel(rodape, text="CLASSIFICAÇÃO ATUAL - selecione a empresa vencedora deste item ou marque RETIRAR VALOR caso a proposta enviada não atenda ao descritivo do Termo de Referência, ou conforme Parecer Técnico", font=destaque, wraplength=1400, justify="left").pack(anchor="w", padx=12, pady=8)
             classificacao = ctk.CTkScrollableFrame(rodape, height=180)
             classificacao.pack(fill="x", padx=10, pady=(0, 8))
             for pos, proposta in enumerate(item["propostas"]):
                 nome, _ = extrair_nome_codigo_fornecedor(proposta["fornecedor"])
                 nome = truncar_em_palavra(nome, 60)
-                ctk.CTkRadioButton(classificacao, text=f"{pos+1}º colocado — {nome} — Unitário: {formatar_pesquisa(proposta['unitario'])}",
-                    variable=vencedor, value=pos, font=fonte, height=30).pack(anchor="w", padx=16, pady=4)
+                linha = ctk.CTkFrame(classificacao, fg_color="transparent")
+                linha.pack(fill="x", padx=8, pady=4)
+                ctk.CTkRadioButton(linha, text=f"{pos+1}º colocado — {nome} — Unitário: {formatar_pesquisa(proposta['unitario'])}",
+                    variable=vencedor, value=pos, font=fonte, height=30).pack(side="left", padx=(8, 12))
                 chave = proposta.get("fornecedor_chave", proposta["fornecedor"])
-                ref = item["referencias"]
-                grupo = ("superior" if ref["superior"] is not None and proposta["unitario"] > ref["superior"]
-                         else "inferior" if ref["inferior"] is not None and proposta["unitario"] < ref["inferior"]
-                         else "analise")
+                grupo = "analise"
                 var = tk.BooleanVar(master=janela, value=False)
-                ctk.CTkCheckBox(classificacao, text=f"RETIRAR VALOR — {nome}", variable=var,
-                    font=fonte, height=32).pack(anchor="w", padx=32, pady=4)
-                motivo = ctk.CTkEntry(classificacao, placeholder_text="Justificativa da retirada (obrigatória)",
+                ctk.CTkCheckBox(linha, text="RETIRAR VALOR", variable=var,
+                    font=fonte, height=32).pack(side="left", padx=12)
+                motivo = ctk.CTkEntry(linha, placeholder_text="Justificativa da retirada (obrigatória)",
                                       font=fonte, width=600)
-                motivo.pack(fill="x", padx=32, pady=(0, 8))
-                if grupo in ("superior", "inferior"):
-                    motivo.insert(0, "Preço acima de 50% da referência" if grupo == "superior"
-                                  else "Preço abaixo de 50% da referência")
+                motivo.pack(side="left", fill="x", expand=True, padx=(12, 8))
+                motivo.insert(0, "Proposta enviada não atende ao descritivo do Termo de Referência conforme")
                 selecoes.append((grupo, chave, var))
                 justificativas[chave] = motivo
             historico_analise = [p for p in item.get("precos_retirados", []) if p.get("grupo") == "analise"]
@@ -1360,16 +1359,20 @@ class AdjudicacaoOrdemMixin:
             idx = vencedor.get()
             escolhido = item["propostas"][idx] if 0 <= idx < len(item["propostas"]) else None
             fornecedores = [chave for _, chave, var in selecoes if var.get()]
-            if any(var.get() and not justificativas[chave].get().strip() for _, chave, var in selecoes):
+            if any(var.get() and grupo == "analise" and not justificativas[chave].get().strip() for grupo, chave, var in selecoes):
                 messagebox.showwarning("Justificativa obrigatória",
                     "Informe a justificativa de cada fornecedor marcado para retirada.", parent=janela)
                 return False
             historico = item.setdefault("precos_retirados", [])
+            registrados = set()
             for grupo, chave, var in selecoes:
-                if var.get():
+                if var.get() and chave not in registrados:
+                    registrados.add(chave)
                     proposta = next(p for p in item["propostas"] if p.get("fornecedor_chave", p["fornecedor"]) == chave)
                     historico.append(dict(fornecedor=proposta["fornecedor"], unitario=proposta["unitario"], grupo=grupo,
-                        fornecedor_chave=chave, justificativa=justificativas[chave].get().strip()))
+                        fornecedor_chave=chave, justificativa=(justificativas[chave].get().strip() if grupo == "analise"
+                            else "Preço acima de 50% da referência" if grupo == "superior"
+                            else "Preço abaixo de 50% da referência")))
             item["pesquisas"] = precos
             aplicar_retiradas(item, fornecedores)
             for i, entry in enumerate(entradas):
