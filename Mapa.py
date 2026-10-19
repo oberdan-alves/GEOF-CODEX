@@ -1010,14 +1010,21 @@ class MapaMixin:
     def _salvar_mapa_em_arquivo(self):
         caminho_json = self._caminho_arquivo_mapa_empresas(
             self._pasta_cotacao_atual, self._codigo_cotacao_atual)
-        conteudo = {
-            "cotacao": self._codigo_cotacao_atual,
-            "ano": self._ano_atual_wizard,
-            "fornecedores": self.mapa_fornecedores,
-        }
         try:
-            with open(caminho_json, "w", encoding="utf-8") as f:
+            # Editar propostas não deve apagar as decisões salvas na adjudicação.
+            conteudo = {}
+            if os.path.exists(caminho_json):
+                with open(caminho_json, "r", encoding="utf-8") as f:
+                    conteudo = json.load(f)
+            conteudo.update({
+                "cotacao": self._codigo_cotacao_atual,
+                "ano": self._ano_atual_wizard,
+                "fornecedores": self.mapa_fornecedores,
+            })
+            temporario = caminho_json + ".tmp"
+            with open(temporario, "w", encoding="utf-8") as f:
                 json.dump(conteudo, f, ensure_ascii=False, indent=2)
+            os.replace(temporario, caminho_json)
         except Exception as e:
             messagebox.showerror("Erro ao salvar", f"Não foi possível salvar o cadastro:\n{e}")
 

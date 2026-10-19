@@ -108,3 +108,40 @@ class CadastroPropostasTest(unittest.TestCase):
         self.assertEqual(app._dados_form_atual['itens'][0]['unitario'], 12.3456)
         self.assertEqual(app._dados_form_atual['itens'][0]['total'], 12.35)
         app._renderizar_preview_fornecedor.assert_called_once()
+
+
+class AtualizacaoCadastroTest(unittest.TestCase):
+    def test_editar_propostas_preserva_decisoes_e_dados_mapa(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / 'mapa.json'
+            decisoes = {'1': dict(codigo='1', cancelado=True, observacaoitem='Manter observação',
+                pesquisas=[123.45, 678.9], vencedor_idx=1, fornecedores_retirados=['B'],
+                precos_retirados=[dict(fornecedor='B', grupo='superior', unitario=999,
+                                      justificativa='Preço acima de 50%')],
+                retiradas_pendentes=[['analise', 'C']], justificativas_retirada={'C': 'Parecer técnico'})}
+            original = dict(cotacao='1', ano='2026', fornecedores={'A': {'itens': []}},
+                            decisoes_itens=decisoes, dados_mapa={'objeto': 'Objeto preservado'})
+            caminho.write_text(json.dumps(original), encoding='utf-8')
+            app = Mapa.MapaMixin()
+            app._pasta_cotacao_atual = pasta
+            app._codigo_cotacao_atual, app._ano_atual_wizard = '1', '2026'
+            app._caminho_arquivo_mapa_empresas = lambda *args: str(caminho)
+            app.mapa_fornecedores = {'A': {'itens': [dict(codigo='1', unitario=50, marca='Nova')]},
+                                     'C': {'itens': [dict(codigo='1', unitario=60)]}}
+            app._salvar_mapa_em_arquivo()
+            salvo = json.loads(caminho.read_text(encoding='utf-8'))
+            self.assertEqual(salvo['fornecedores'], app.mapa_fornecedores)
+            self.assertEqual(salvo['decisoes_itens'], decisoes)
+            self.assertEqual(salvo['dados_mapa'], original['dados_mapa'])
+            # Também preserva após uma segunda edição e bloqueia sobrescrita de arquivo inválido.
+            app.mapa_fornecedores['A']['itens'][0]['marca'] = 'Outra marca'
+            app._salvar_mapa_em_arquivo()
+            self.assertEqual(json.loads(caminho.read_text())['decisoes_itens'], decisoes)
+            caminho.write_text('{arquivo inválido', encoding='utf-8')
+            with patch.object(Mapa.messagebox, 'showerror') as erro:
+                app._salvar_mapa_em_arquivo()
+            erro.assert_called_once()
+            self.assertEqual(caminho.read_text(encoding='utf-8'), '{arquivo inválido')
