@@ -241,6 +241,50 @@ class TelaPesquisaItemTest(unittest.TestCase):
 
 
 class PersistenciaTelasTest(unittest.TestCase):
+    def test_editor_relatorio_salva_reabre_e_atualiza_texto(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        class App(adj.AdjudicacaoOrdemMixin):
+            def _caminho_arquivo_mapa_empresas(self, *args):
+                return self.arquivo
+            def wait_window(self, janela):
+                self.exercitar(janela)
+        def caixa():
+            return next(w for w in Widget.criados if not w.destruido and w.kwargs.get('wrap') == 'word')
+        def clicar(texto):
+            next(w for w in Widget.criados if not w.destruido and w.kwargs.get('text') == texto).kwargs['command']()
+        with tempfile.TemporaryDirectory() as pasta, ExitStack() as stack:
+            for nome in ('CTkToplevel', 'CTkFrame', 'CTkLabel', 'CTkTextbox', 'CTkButton'):
+                stack.enter_context(patch.object(adj.ctk, nome, Widget))
+            stack.enter_context(patch.object(adj.messagebox, 'askyesno', return_value=True))
+            app = App()
+            app._pasta_cotacao_atual, app._codigo_cotacao_atual = pasta, '178'
+            app.arquivo = str(Path(pasta) / 'mapa.json')
+            Path(app.arquivo).write_text(json.dumps({'decisoes_itens': {'1': {'cancelado': True}}}))
+            def editar(janela):
+                self.assertEqual(caixa().get(), 'Texto automático')
+                caixa().insert('1.0', 'Texto editado com justificativa adicional')
+                clicar('SALVAR TEXTO')
+                janela.kwargs['WM_DELETE_WINDOW']()
+            Widget.criados = []
+            app.exercitar = editar
+            self.assertIsNone(app._editar_relatorio_pesquisa('Texto automático'))
+            salvo = json.loads(Path(app.arquivo).read_text())
+            self.assertTrue(salvo['decisoes_itens']['1']['cancelado'])
+            self.assertEqual(salvo['relatorio_pesquisa']['texto'], 'Texto editado com justificativa adicional')
+            def reabrir(janela):
+                self.assertEqual(caixa().get(), 'Texto editado com justificativa adicional')
+                self.assertTrue(any('mudaram' in w.kwargs.get('text', '') for w in Widget.criados))
+                clicar('ATUALIZAR COM DADOS ATUAIS')
+                self.assertEqual(caixa().get(), 'Novos dados automáticos')
+                clicar('SALVAR E GERAR DOCUMENTOS')
+            Widget.criados = []
+            app.exercitar = reabrir
+            self.assertEqual(app._editar_relatorio_pesquisa('Novos dados automáticos'), 'Novos dados automáticos')
+            salvo = json.loads(Path(app.arquivo).read_text())
+            self.assertEqual(salvo['relatorio_pesquisa']['base'], 'Novos dados automáticos')
+
     def test_fechar_reabrir_editar_limpar_sem_apagar_outra_tela(self):
         import json
         import tempfile

@@ -60,6 +60,118 @@ def montar_texto_pesquisa_justificativa(mapa_itens):
     return TEXTO_PESQUISA_PADRAO + ("\n\n" + "\n".join(observacoes) if observacoes else "")
 
 
+def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
+    """Relata os dados efetivamente usados, sem presumir consultas ou pareceres."""
+    def moeda(valor):
+        if valor is None:
+            return "não informado"
+        return "R$ " + f"{valor:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    linhas = ["RELATÓRIO DE PESQUISA DE PREÇOS", f"Cotação: {codigo}/{ano}",
+              f"Processo/publicação SEI: {sei or 'não informado'}", "", "1. OBJETO DA PESQUISA",
+              dados.get("objeto") or "Objeto descrito nos itens abaixo.", "", "2. METODOLOGIA E CRITÉRIOS",
+              "Este relatório apresenta as informações registradas na adjudicação. Os valores são unitários. "
+              "Cada pesquisa externa preenchida representa um valor no conjunto, assim como cada proposta de fornecedor mantida. "
+              "Campo sem valor informado não participa do cálculo; isso, por si só, não comprova se houve consulta à fonte.",
+              "A média é a soma dos valores dividida pela quantidade de valores. A mediana é o valor central da lista ordenada; "
+              "se a quantidade for par, é a média dos dois valores centrais. O sistema adota como referência o menor resultado entre média e mediana. "
+              "Os limites exibidos correspondem à referência multiplicada por 1,5 e por 0,5. "
+              "A retirada depende da seleção do operador: estar fora de um limite não exclui automaticamente uma proposta. "
+              "Após uma retirada, as medidas são recalculadas. Os limites finais podem diferir daqueles observados no momento da retirada.",
+              "Os fundamentos e as justificativas informados pelo responsável estão transcritos ao final. "
+              "Este documento não presume conformidade técnica ou comprovação documental além do que foi registrado.",
+              "", "3. ANÁLISE POR ITEM"]
+    for item in itens:
+        linhas += ["", f"ITEM {item['numero_item']} — {item['codigo']}",
+                   f"Descrição: {item['descricao']}", f"Unidade: {item.get('un') or 'não informada'}"]
+        if item.get("cancelado"):
+            linhas.append("Situação: CANCELADO. Não participa do fechamento da adjudicação; não há conclusão de referência ou vencedor para este item neste relatório.")
+        else:
+            linhas.append("Situação: item em análise na adjudicação.")
+        linhas.append("Fontes externas registradas:")
+        titulos = item.get("titulos_pesquisa") or dados.get("titulos_pesquisa") or TITULOS_PESQUISA_PADRAO
+        pesquisas = item.get("pesquisas") or [None, None]
+        for i, titulo in enumerate(titulos):
+            valor = pesquisas[i] if i < len(pesquisas) else None
+            linhas.append(f"- {titulo}: {moeda(valor)}" + (" — não integra o cálculo." if valor is None else "."))
+        linhas.append("Propostas mantidas após a revisão:")
+        propostas = item["propostas"]
+        for proposta in propostas:
+            linhas.append(f"- {proposta['fornecedor']}: {moeda(proposta['unitario'])}; marca: {proposta.get('marca') or 'não informada'}.")
+        if not propostas:
+            linhas.append("Nenhuma proposta mantida.")
+        historico = item.get("precos_retirados") or []
+        for grupo, titulo in [("superior", "FORNECEDORES RETIRADOS - 50% ACIMA"),
+                              ("inferior", "FORNECEDORES RETIRADOS - 50% ABAIXO"),
+                              ("analise", "FORNECEDORES RETIRADOS - ANÁLISE DA PROPOSTA")]:
+            linhas.append(titulo)
+            registros = [p for p in historico if p.get("grupo") == grupo]
+            for p in registros:
+                motivo = p.get("justificativa") or ("Preço acima de 50% da referência" if grupo == "superior" else
+                          "Preço abaixo de 50% da referência" if grupo == "inferior" else "Justificativa não registrada")
+                linhas.append(f"- {p['fornecedor']}: {moeda(p['unitario'])}. Justificativa: {motivo}. Não participa da média e da mediana finais.")
+            if not registros:
+                linhas.append("Nenhum registro neste grupo.")
+        registrados = {p.get("fornecedor_chave") for p in historico}
+        sem_historico = [chave for chave in item.get("fornecedores_retirados", []) if chave not in registrados]
+        if sem_historico:
+            linhas.append("Retiradas antigas sem detalhamento completo: " + ", ".join(sem_historico) + ". Consultar documentação de suporte para valores e motivos.")
+        linhas.append("OBSERVAÇÃOITEM: " + (item.get("observacaoitem") or "Nenhuma observação registrada."))
+        if item.get("cancelado"):
+            continue
+        valores = sorted([p["unitario"] for p in propostas] + [v for v in pesquisas if v is not None])
+        linhas.append(f"Conjunto final: {len(propostas)} proposta(s) mantida(s) e {sum(v is not None for v in pesquisas)} valor(es) de pesquisas externas, totalizando {len(valores)} valor(es).")
+        if not valores:
+            linhas.append("Não há valores para calcular média, mediana ou referência. Item sem vencedor.")
+            continue
+        media, mediana = mean(valores), median(valores)
+        referencia = min(media, mediana)
+        linhas += ["Valores em ordem crescente: " + "; ".join(moeda(v) for v in valores) + ".",
+                   f"Soma: {moeda(sum(valores))}. Média: {moeda(sum(valores))} ÷ {len(valores)} = {moeda(media)}."]
+        meio = len(valores) // 2
+        linhas.append(f"Mediana: termo central, posição {meio+1}: {moeda(mediana)}." if len(valores) % 2 else
+                      f"Mediana: média dos termos nas posições {meio} e {meio+1}: ({moeda(valores[meio-1])} + {moeda(valores[meio])}) ÷ 2 = {moeda(mediana)}.")
+        linhas += [f"REFERÊNCIA FINAL: menor entre média ({moeda(media)}) e mediana ({moeda(mediana)}) = {moeda(referencia)}.",
+                   f"Limites finais de revisão: inferior = {moeda(referencia)} × 0,5 = {moeda(referencia*0.5)}; superior = {moeda(referencia)} × 1,5 = {moeda(referencia*1.5)}."]
+        if len(valores) < 3:
+            linhas.append("Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte devem ser conferidos pelo responsável.")
+        idx = item.get("vencedor_idx")
+        if isinstance(idx, int) and 0 <= idx < len(propostas):
+            p = propostas[idx]
+            linhas.append(f"Empresa vencedora selecionada: {p['fornecedor']} — {moeda(p['unitario'])}. A referência estatística e o preço da vencedora são informações distintas.")
+        else:
+            linhas.append("Empresa vencedora não selecionada.")
+    linhas += ["", "4. PESQUISA DE PREÇOS E JUSTIFICATIVA", dados.get("texto_pesquisa") or "Não informada.",
+               "", "5. OBSERVAÇÕES DO MAPA COMPARATIVO", dados.get("observacoes") or "Nenhuma observação registrada.",
+               "", "6. CONCLUSÃO", "As referências e as decisões por item estão discriminadas acima. As propostas retiradas não integram os cálculos finais. "
+               "A comprovação das fontes, das propostas e dos pareceres mencionados deve acompanhar o processo."]
+    return "\n".join(linhas)
+
+
+def gerar_pdf_relatorio_pesquisa(caminho, texto):
+    """Exporta exatamente o texto revisado, com paginação e quebra de parágrafos."""
+    doc = SimpleDocTemplate(caminho, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm,
+                            topMargin=1.7*cm, bottomMargin=1.7*cm,
+                            title="Relatório de Pesquisa de Preços", author="GEOF")
+    styles = getSampleStyleSheet()
+    corpo = ParagraphStyle("RelatorioCorpo", parent=styles["Normal"], fontSize=10, leading=14, spaceAfter=6)
+    titulo = ParagraphStyle("RelatorioTitulo", parent=styles["Heading2"], fontSize=12, leading=16, spaceBefore=10)
+    story = [montar_cabecalho_institucional(A4[0]-4*cm, ["GOVERNO DO DISTRITO FEDERAL",
+        "SECRETARIA DE ESTADO DE SAÚDE", "GEOF — PESQUISA DE PREÇOS"]), Spacer(1, 12)]
+    for linha in texto.splitlines():
+        if not linha.strip():
+            story.append(Spacer(1, 6))
+            continue
+        destaque = linha.startswith(("ITEM ", "RELATÓRIO DE", "1. ", "2. ", "3. ", "4. ", "5. ", "6. "))
+        story.append(Paragraph(escape(linha), titulo if destaque else corpo))
+    def pagina(canvas, documento):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(A4[0]-2*cm, cm, f"Página {documento.page}")
+        canvas.restoreState()
+    doc.build(story, onFirstPage=pagina, onLaterPages=pagina)
+
+
 def numero_pesquisa(texto):
     texto = str(texto).strip().replace(" ", "")
     if not texto:
@@ -1163,6 +1275,14 @@ class AdjudicacaoOrdemMixin:
             objeto_auto, observacoes_auto, montar_texto_pesquisa_justificativa(mapa_itens))
         dados_extra["titulos_pesquisa"] = pesquisas
 
+        texto_auto = montar_texto_relatorio_pesquisa(mapa_itens, self._codigo_cotacao_atual,
+            self._ano_atual_wizard, dados_extra, self.entry_sei.get().strip())
+        texto_relatorio = self._editar_relatorio_pesquisa(texto_auto)
+        if texto_relatorio is None:
+            return
+        caminho_relatorio = os.path.join(self._pasta_cotacao_atual,
+            f"RELATORIO DA PESQUISA {self._codigo_cotacao_atual}.pdf")
+
         base = f"MAPA COMPARATIVO {self._codigo_cotacao_atual}"
         caminho_pdf = os.path.join(self._pasta_cotacao_atual, base + ".pdf")
         caminho_jpg_base = os.path.join(self._pasta_cotacao_atual, base)
@@ -1182,6 +1302,7 @@ class AdjudicacaoOrdemMixin:
             gerar_excel_mapa_comparativo(caminho_excel, self._codigo_cotacao_atual,
                                         self._ano_atual_wizard, mapa_itens, dados_extra)
             caminho_jpg = converter_pdf_para_jpg(caminho_pdf, caminho_jpg_base)
+            gerar_pdf_relatorio_pesquisa(caminho_relatorio, texto_relatorio)
         except Exception as e:
             messagebox.showerror("Erro ao gerar Mapa Comparativo", str(e))
             return
@@ -1200,9 +1321,70 @@ class AdjudicacaoOrdemMixin:
             messagebox.showwarning("Relação por menor preço", f"Mapa salvo, mas não foi possível atualizar a relação de preços: {e}")
         messagebox.showinfo(
             "Mapa Comparativo gerado",
-            f"Arquivos salvos em:\n{caminho_pdf}\n{caminho_jpg}\n{caminho_excel}")
+            f"Arquivos salvos em:\n{caminho_pdf}\n{caminho_jpg}\n{caminho_excel}\n{caminho_relatorio}")
 
         exibir_preview_pdf_jpg(self, caminho_jpg, "Mapa Comparativo")
+
+    def _editar_relatorio_pesquisa(self, texto_auto):
+        caminho = self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, self._codigo_cotacao_atual)
+        try:
+            with open(caminho, "r", encoding="utf-8") as arquivo:
+                salvo = json.load(arquivo).get("relatorio_pesquisa", {})
+        except Exception as erro:
+            messagebox.showerror("Erro ao carregar relatório", str(erro))
+            return None
+        janela = ctk.CTkToplevel(self)
+        janela.title("Relatório de Pesquisa de Preços — revisar e editar")
+        janela.geometry("1280x900")
+        maximizar_janela(janela)
+        janela.grab_set()
+        rodape = ctk.CTkFrame(janela)
+        rodape.pack(side="bottom", fill="x", padx=16, pady=12)
+        aviso = ("Os dados da pesquisa mudaram desde a última versão. O texto salvo foi preservado; "
+                 "use ATUALIZAR COM DADOS ATUAIS para reconstruí-lo e substituir as edições anteriores."
+                 if salvo and salvo.get("base") != texto_auto else
+                 "Revise o texto antes de gerar o PDF. SALVAR TEXTO guarda as edições para reabrir depois.")
+        ctk.CTkLabel(janela, text=aviso, font=("Segoe UI", 18), wraplength=1150,
+                     justify="left").pack(fill="x", padx=16, pady=12)
+        texto = ctk.CTkTextbox(janela, font=("Segoe UI", 18), wrap="word")
+        texto.pack(fill="both", expand=True, padx=16, pady=8)
+        texto.insert("1.0", salvo.get("texto", texto_auto))
+        resultado = []
+        def salvar():
+            conteudo = texto.get("1.0", "end").strip()
+            if not conteudo:
+                messagebox.showwarning("Relatório vazio", "Preencha o texto do relatório.", parent=janela)
+                return False
+            try:
+                with open(caminho, "r", encoding="utf-8") as arquivo:
+                    dados = json.load(arquivo)
+                dados["relatorio_pesquisa"] = {"texto": conteudo, "base": base[0]}
+                with open(caminho + ".tmp", "w", encoding="utf-8") as arquivo:
+                    json.dump(dados, arquivo, ensure_ascii=False, indent=2)
+                os.replace(caminho + ".tmp", caminho)
+                return True
+            except Exception as erro:
+                messagebox.showerror("Erro ao salvar relatório", str(erro), parent=janela)
+                return False
+        base = [salvo.get("base", texto_auto)]
+        def atualizar():
+            if messagebox.askyesno("Atualizar relatório", "Substituir o texto editado pelo texto gerado com os dados atuais?", parent=janela):
+                texto.delete("1.0", "end")
+                texto.insert("1.0", texto_auto)
+                base[0] = texto_auto
+        def gerar():
+            if salvar():
+                resultado.append(texto.get("1.0", "end").strip())
+                janela.destroy()
+        def fechar():
+            if salvar():
+                janela.destroy()
+        ctk.CTkButton(rodape, text="SALVAR TEXTO", command=salvar, height=44).pack(side="left", padx=8)
+        ctk.CTkButton(rodape, text="ATUALIZAR COM DADOS ATUAIS", command=atualizar, height=44).pack(side="left", padx=8)
+        ctk.CTkButton(rodape, text="SALVAR E GERAR DOCUMENTOS", command=gerar, height=44).pack(side="right", padx=8)
+        janela.protocol("WM_DELETE_WINDOW", fechar)
+        self.wait_window(janela)
+        return resultado[0] if resultado else None
 
     def _salvar_campos_telas(self, itens, campos):
         """Atualiza apenas os campos da tela, sem apagar decisões de outros itens."""

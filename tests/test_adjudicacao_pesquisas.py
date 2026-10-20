@@ -144,5 +144,35 @@ class PesquisasTest(unittest.TestCase):
             self.assertEqual(itens[0][1]['unitario'], 100)
 
 
+class RelatorioPesquisaTest(unittest.TestCase):
+    def test_conteudo_calculos_retiradas_cancelado_e_pdf(self):
+        it = item(precos=(10, 20, 300), pesquisas=(None, 30))
+        it['observacaoitem'] = 'NF de outro CNPJ: apenas reforço, fora do cálculo.'
+        it['precos_retirados'] = [dict(fornecedor='Fornecedor 2', fornecedor_chave='F2',
+            unitario=300, grupo='superior', justificativa='Preço acima de 50%'),
+            dict(fornecedor='Retirado técnico', unitario=15, grupo='analise', justificativa='Despacho 123'),
+            dict(fornecedor='Retirado baixo', unitario=1, grupo='inferior', justificativa='Preço abaixo de 50%')]
+        adj.aplicar_retiradas(it, ['F2'])
+        cancelado = item(numero=2)
+        cancelado['cancelado'] = True
+        dados = dict(objeto='Objeto <teste> & equipamentos', texto_pesquisa='Justificativa editada',
+                     observacoes='Observação geral')
+        texto = adj.montar_texto_relatorio_pesquisa([it, cancelado], '178', '2026', dados, 'SEI 123')
+        for esperado in ('R$ 20,0000', 'totalizando 3 valor(es)', 'Despacho 123',
+                         '50% ACIMA', '50% ABAIXO', 'ANÁLISE DA PROPOSTA',
+                         'Justificativa editada', 'Observação geral', it['observacaoitem'],
+                         'CANCELADO', 'não informado', 'SEI 123'):
+            self.assertIn(esperado, texto)
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = str(Path(pasta) / 'relatorio.pdf')
+            adj.gerar_pdf_relatorio_pesquisa(caminho, texto + '\n' + ('Texto longo de revisão. ' * 800))
+            with fitz.open(caminho) as pdf:
+                self.assertGreater(len(pdf), 1)
+                extraido = ''.join(p.get_text() for p in pdf)
+                self.assertIn('Objeto <teste> & equipamentos', extraido)
+                self.assertIn('Despacho 123', extraido)
+                self.assertIn('Página 2', extraido)
+
+
 if __name__ == '__main__':
     unittest.main()

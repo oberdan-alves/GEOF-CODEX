@@ -93,6 +93,11 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
             app._perguntar_pesquisas_precos = pesquisas
             app._perguntar_itens_cancelados = cancelados
             app._perguntar_dados_finalizacao = dados
+            def relatorio(texto):
+                etapas.append('relatorio')
+                self.assertIn('Justificativa vigente', texto)
+                return texto + '\nTexto revisado pelo operador.'
+            app._editar_relatorio_pesquisa = relatorio
             with patch.object(adjudicacao.messagebox, 'showinfo'), \
                  patch.object(adjudicacao.messagebox, 'showwarning') as aviso, \
                  patch.object(adjudicacao.messagebox, 'showerror') as erro, \
@@ -100,10 +105,10 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
                 Button.botoes['ADJUDICAÇÃO'].invoke()
             erro.assert_not_called()
             aviso.assert_not_called()
-            self.assertEqual(etapas, ['cancelados', 'pesquisa_revisao_vencedor', 'dados_mapa'])
+            self.assertEqual(etapas, ['cancelados', 'pesquisa_revisao_vencedor', 'dados_mapa', 'relatorio'])
             preview.assert_called_once()
             for nome in ('MAPA COMPARATIVO 178.pdf', 'MAPA COMPARATIVO 178.xlsx',
-                         'MAPA COMPARATIVO PRÉVIO RESUMIDO 178.pdf'):
+                         'MAPA COMPARATIVO PRÉVIO RESUMIDO 178.pdf', 'RELATORIO DA PESQUISA 178.pdf'):
                 self.assertTrue((Path(pasta)/nome).is_file(), nome)
             self.assertTrue(list(Path(pasta).glob('MAPA COMPARATIVO 178*.jpg')))
             salvo = json.loads(cadastro.read_text(encoding='utf-8'))
