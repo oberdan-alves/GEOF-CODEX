@@ -145,6 +145,26 @@ class PesquisasTest(unittest.TestCase):
 
 
 class RelatorioPesquisaTest(unittest.TestCase):
+    def test_metodologia_e_observacoes_sem_repeticao_na_justificativa(self):
+        primeiro, segundo = item(), item(numero=2)
+        primeiro['observacaoitem'] = 'Nota fiscal complementar.\nNão integra o cálculo.'
+        segundo['observacaoitem'] = 'Análise técnica registrada.'
+        dados = {'texto_pesquisa': adj.montar_texto_pesquisa_justificativa([primeiro, segundo]) +
+                 '\nComplemento manual da justificativa.'}
+        texto = adj.montar_texto_relatorio_pesquisa([primeiro, segundo], '178', '2026', dados)
+        topico4 = texto.split('4. PESQUISA DE PREÇOS E JUSTIFICATIVA')[1].split('5. OBSERVAÇÕES DO MAPA COMPARATIVO')[0]
+        for observacao in (primeiro['observacaoitem'], segundo['observacaoitem']):
+            self.assertEqual(texto.count(observacao), 1)
+            self.assertNotIn(observacao, topico4)
+        self.assertIn(adj.TEXTO_PESQUISA_PADRAO, topico4)
+        self.assertIn('Complemento manual da justificativa.', topico4)
+        self.assertIn('1,5 (Preço exorbitante) e por 0,5 (Preço inexequível)', texto)
+        self.assertNotIn('não comprova se houve consulta', texto)
+        self.assertNotIn('A retirada depende da seleção', texto)
+        self.assertNotIn('Este documento não presume', texto)
+        # A justificativa do mapa permanece com as observações originais.
+        self.assertIn(primeiro['observacaoitem'], dados['texto_pesquisa'])
+
     def test_conteudo_calculos_retiradas_cancelado_e_pdf(self):
         it = item(precos=(10, 20, 300), pesquisas=(None, 30))
         it['observacaoitem'] = 'NF de outro CNPJ: apenas reforço, fora do cálculo.'

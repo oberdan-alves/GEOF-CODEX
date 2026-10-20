@@ -72,14 +72,13 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
               dados.get("objeto") or "Objeto descrito nos itens abaixo.", "", "2. METODOLOGIA E CRITÉRIOS",
               "Este relatório apresenta as informações registradas na adjudicação. Os valores são unitários. "
               "Cada pesquisa externa preenchida representa um valor no conjunto, assim como cada proposta de fornecedor mantida. "
-              "Campo sem valor informado não participa do cálculo; isso, por si só, não comprova se houve consulta à fonte.",
-              "A média é a soma dos valores dividida pela quantidade de valores. A mediana é o valor central da lista ordenada; "
-              "se a quantidade for par, é a média dos dois valores centrais. O sistema adota como referência o menor resultado entre média e mediana. "
-              "Os limites exibidos correspondem à referência multiplicada por 1,5 e por 0,5. "
-              "A retirada depende da seleção do operador: estar fora de um limite não exclui automaticamente uma proposta. "
+              "Campo sem valor informado não participa do cálculo.",
+              "A média é a soma dos valores dividida pela quantidade de valores.",
+              "A mediana é o valor central da lista ordenada; se a quantidade for par, é a média dos dois valores centrais.",
+              "O sistema adota como referência o menor resultado entre média e mediana.",
+              "Os limites exibidos correspondem à referência multiplicada por 1,5 (Preço exorbitante) e por 0,5 (Preço inexequível).",
               "Após uma retirada, as medidas são recalculadas. Os limites finais podem diferir daqueles observados no momento da retirada.",
-              "Os fundamentos e as justificativas informados pelo responsável estão transcritos ao final. "
-              "Este documento não presume conformidade técnica ou comprovação documental além do que foi registrado.",
+              "Os fundamentos e as justificativas informados pelo responsável estão transcritos ao final.",
               "", "3. ANÁLISE POR ITEM"]
     for item in itens:
         linhas += ["", f"ITEM {item['numero_item']} — {item['codigo']}",
@@ -141,7 +140,15 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
             linhas.append(f"Empresa vencedora selecionada: {p['fornecedor']} — {moeda(p['unitario'])}. A referência estatística e o preço da vencedora são informações distintas.")
         else:
             linhas.append("Empresa vencedora não selecionada.")
-    linhas += ["", "4. PESQUISA DE PREÇOS E JUSTIFICATIVA", dados.get("texto_pesquisa") or "Não informada.",
+    # O mapa inclui as observações automaticamente na justificativa; no relatório
+    # elas já estão na análise individual. Remove somente esses blocos conhecidos.
+    justificativa = dados.get("texto_pesquisa") or ""
+    for item in itens:
+        observacao = (item.get("observacaoitem") or "").strip()
+        if observacao:
+            bloco = f"ITEM {item['numero_item']} {observacao}"
+            justificativa = justificativa.replace(bloco, "")
+    linhas += ["", "4. PESQUISA DE PREÇOS E JUSTIFICATIVA", justificativa.strip() or "Não informada.",
                "", "5. OBSERVAÇÕES DO MAPA COMPARATIVO", dados.get("observacoes") or "Nenhuma observação registrada.",
                "", "6. CONCLUSÃO", "As referências e as decisões por item estão discriminadas acima. As propostas retiradas não integram os cálculos finais. "
                "A comprovação das fontes, das propostas e dos pareceres mencionados deve acompanhar o processo."]
