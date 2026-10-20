@@ -18,6 +18,24 @@ def item(precos=(5650, 7500, 12990), pesquisas=(8000, 9213.5), numero=1):
 
 
 class PesquisasTest(unittest.TestCase):
+    def test_exportacao_pesquisas_incompletas_e_item_cancelado(self):
+        for pesquisas in ([], [123.45], None):
+            with self.subTest(pesquisas=pesquisas), tempfile.TemporaryDirectory() as pasta:
+                it = item()
+                it.update(cancelado=True, pesquisas=pesquisas)
+                excel = Path(pasta) / 'mapa.xlsx'
+                pdf = Path(pasta) / 'mapa.pdf'
+                adj.gerar_excel_mapa_comparativo(excel, '178', '2026', [it], {})
+                adj.gerar_pdf_mapa_comparativo(str(pdf), '178', '2026', [it])
+                wb = load_workbook(excel)
+                self.assertEqual(wb['Adjudicação']['K9'].value, 123.45 if pesquisas else None)
+                self.assertIsNone(wb['Adjudicação']['L9'].value)
+                wb.close()
+                with fitz.open(pdf) as documento:
+                    self.assertIn('CANCELADO', ''.join(p.get_text() for p in documento))
+                adj.aplicar_retiradas(it)
+                self.assertEqual(len(it['pesquisas']), 2)
+
     def test_exemplo_imagem(self):
         it = item()
         adj.recalcular_referencias(it)

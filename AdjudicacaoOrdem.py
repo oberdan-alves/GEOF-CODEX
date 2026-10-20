@@ -60,6 +60,12 @@ def montar_texto_pesquisa_justificativa(mapa_itens):
     return TEXTO_PESQUISA_PADRAO + ("\n\n" + "\n".join(observacoes) if observacoes else "")
 
 
+def valores_pesquisa(item):
+    """Garante as duas posições mesmo em cadastros antigos ou itens cancelados."""
+    valores = list(item.get("pesquisas") or [])
+    return (valores + [None, None])[:2]
+
+
 def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
     """Relata os dados efetivamente usados, sem presumir consultas ou pareceres."""
     def moeda(valor):
@@ -89,7 +95,7 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
             linhas.append("Situação: item em análise na adjudicação.")
         linhas.append("Fontes externas registradas:")
         titulos = item.get("titulos_pesquisa") or dados.get("titulos_pesquisa") or TITULOS_PESQUISA_PADRAO
-        pesquisas = item.get("pesquisas") or [None, None]
+        pesquisas = valores_pesquisa(item)
         for i, titulo in enumerate(titulos):
             valor = pesquisas[i] if i < len(pesquisas) else None
             linhas.append(f"- {titulo}: {moeda(valor)}" + (" — não integra o cálculo." if valor is None else "."))
@@ -197,7 +203,7 @@ def formatar_pesquisa(valor):
 
 def recalcular_referencias(item):
     valores = [p["unitario"] for p in item["propostas"]]
-    valores += [v for v in item.get("pesquisas", []) if v is not None]
+    valores += [v for v in valores_pesquisa(item) if v is not None]
     media = mean(valores) if valores else None
     mediana = median(valores) if valores else None
     referencia = min(media, mediana) if valores else None
@@ -210,6 +216,7 @@ def aplicar_retiradas(item, fornecedores=(), pesquisas=()):
     removidos = set(item.get("fornecedores_retirados", [])) | set(fornecedores)
     item["fornecedores_retirados"] = sorted(removidos)
     item["propostas"] = [p for p in item["propostas"] if p.get("fornecedor_chave", p["fornecedor"]) not in removidos]
+    item["pesquisas"] = valores_pesquisa(item)
     for indice in pesquisas:
         item["pesquisas"][indice] = None
     item["vencedor_idx"] = 0 if item["propostas"] else None
@@ -308,7 +315,7 @@ def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
         ws.cell(r+3, 5, item['descricao'])
         for j in range(2):
             ws.merge_cells(start_row=r, start_column=11+j, end_row=r+2, end_column=11+j)
-            ws.cell(r, 11+j, item.get('pesquisas', [None, None])[j])
+            ws.cell(r, 11+j, valores_pesquisa(item)[j])
         inicio = linha_fonte
         # Inclui todos os fornecedores válidos, não apenas os três exibidos.
         for proposta in item['propostas']:
@@ -609,7 +616,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                 else:
                     texto_vazio = "DESERTO" if not item["propostas"] else "PROPOSTA NÃO APRESENTADA"
                 linha1 += [Paragraph(texto_vazio, estilo_cel_bold), "", ""]
-        pesquisas = item.get("pesquisas", [None, None])
+        pesquisas = valores_pesquisa(item)
         ref = item.get("referencias", {})
         linha1 += [Paragraph(formatar_pesquisa(v), estilo_cel_normal) for v in pesquisas]
         linha1.append(Paragraph(formatar_pesquisa(ref.get("media")), estilo_cel_normal))
@@ -1614,7 +1621,7 @@ class AdjudicacaoOrdemMixin:
             for widget in corpo.winfo_children():
                 widget.destroy()
             selecoes.clear()
-            item.setdefault("pesquisas", [None, None])
+            item["pesquisas"] = valores_pesquisa(item)
             recalcular_referencias(item)
             vencedor.set(item.get("vencedor_idx") or 0)
             for campo, texto in zip(titulos, item.get("titulos_pesquisa") or nomes()):
@@ -1844,7 +1851,7 @@ class AdjudicacaoOrdemMixin:
                 "fornecedores_retirados": item.get("fornecedores_retirados", []),
                 "precos_retirados": item.get("precos_retirados", []),
                 "observacaoitem": item.get("observacaoitem", ""),
-                "pesquisas": item.get("pesquisas", []),
+                "pesquisas": valores_pesquisa(item),
                 "titulos_pesquisa": item.get("titulos_pesquisa", list(TITULOS_PESQUISA_PADRAO)),
                 "justificativas_retirada": item.get("justificativas_retirada", {}),
                 "retiradas_pendentes": item.get("retiradas_pendentes", []),
