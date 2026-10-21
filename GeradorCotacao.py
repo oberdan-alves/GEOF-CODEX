@@ -800,7 +800,7 @@ class _AppCotacaoBase(ctk.CTk):
         pad = {"padx": 16, "pady": (6, 2)}
 
         # --- COTAÇÃO (matriz até 10) ---
-        ctk.CTkLabel(col, text="COTAÇÃO (até 10 - código 999)",
+        ctk.CTkLabel(col, text="COTAÇÃO (até 10 - código com 3 dígitos)",
                      font=FONTE_SECAO, text_color=COR_TEXTO).pack(anchor="w", **pad)
         ctk.CTkLabel(col, text="Clique/digite em uma caixa para torná-la a cotação ativa",
                      font=("Segoe UI", 11), text_color=COR_TEXTO_SEC).pack(anchor="w", padx=16)
@@ -810,12 +810,12 @@ class _AppCotacaoBase(ctk.CTk):
         self.indice_cotacao_ativa = None
         for i in range(QTD_MAX_COTACOES):
             e = ctk.CTkEntry(grid_cot, width=70, height=32, font=FONTE_ENTRY,
-                              placeholder_text="999", justify="center",
+                              placeholder_text="", justify="center",
                               border_width=2, border_color=COR_COTACAO_INATIVA)
             e.grid(row=i // 5, column=i % 5, padx=3, pady=3)
             e.bind("<KeyRelease>", lambda ev, idx=i: self._on_cotacao_digitada(idx))
-            e.bind("<FocusIn>", lambda ev, idx=i: self._definir_cotacao_ativa(idx))
-            e.bind("<Button-1>", lambda ev, idx=i: self._definir_cotacao_ativa(idx))
+            e.bind("<FocusIn>", lambda ev, idx=i: self._selecionar_entrada_cotacao(idx))
+            e.bind("<ButtonRelease-1>", lambda ev, idx=i: self._selecionar_entrada_cotacao(idx))
             self.entradas_cotacao.append(e)
 
         ctk.CTkButton(grid_cot, text="⚙ Contatos\nda Ordem", font=("Segoe UI", 11, "bold"),
@@ -1297,6 +1297,11 @@ class _AppCotacaoBase(ctk.CTk):
             entry.insert(0, formatado)
             entry.icursor("end")
 
+    def _selecionar_entrada_cotacao(self, indice):
+        self._definir_cotacao_ativa(indice)
+        entry = self.entradas_cotacao[indice]
+        entry.after_idle(lambda: entry.select_range(0, "end"))
+
     def _on_cotacao_digitada(self, indice):
         entry = self.entradas_cotacao[indice]
         texto = formatar_apenas_digitos(entry.get(), 3)
@@ -1480,10 +1485,9 @@ class _AppCotacaoBase(ctk.CTk):
         self._atualizar_itens_cotacao_ativa()
 
     def acao_limpar_cotacoes(self):
-        """Restaura as dez cotações e limpa os dados da consulta atual."""
+        """Deixa as dez entradas em branco e limpa os dados da consulta atual."""
         for entry in self.entradas_cotacao:
             entry.delete(0, "end")
-            entry.insert(0, "999")
             entry.configure(border_color=COR_COTACAO_INATIVA,
                             fg_color=("gray20", "gray20"))
         self.indice_cotacao_ativa = None
