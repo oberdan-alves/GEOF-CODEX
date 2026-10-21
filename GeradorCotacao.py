@@ -828,6 +828,11 @@ class _AppCotacaoBase(ctk.CTk):
                       command=self.acao_resetar_cotacao_ativa
                       ).grid(row=0, column=6, rowspan=2, padx=(6, 0), pady=3, sticky="ns")
 
+        ctk.CTkButton(grid_cot, text="Limpar\nCotações", font=("Segoe UI", 11, "bold"),
+                      width=76, height=67, fg_color="#3a3a3a", hover_color="#4a4a4a",
+                      command=self.acao_limpar_cotacoes
+                      ).grid(row=0, column=7, rowspan=2, padx=(6, 0), pady=3, sticky="ns")
+
         ctk.CTkButton(col, text="CONSULTAR COTAÇÃO", font=FONTE_BOTAO,
                       fg_color=COR_DESTAQUE, height=32,
                       command=self.acao_consultar_cotacao).pack(fill="x", padx=16, pady=(4, 8))
@@ -1473,6 +1478,20 @@ class _AppCotacaoBase(ctk.CTk):
         rápido depois de trocar qualquer informação na tela (COTAÇÃO,
         NOME PLANILHA, ANO, PASTA DE TRABALHO etc.)."""
         self._atualizar_itens_cotacao_ativa()
+
+    def acao_limpar_cotacoes(self):
+        """Restaura as dez cotações e limpa os dados da consulta atual."""
+        for entry in self.entradas_cotacao:
+            entry.delete(0, "end")
+            entry.insert(0, "999")
+            entry.configure(border_color=COR_COTACAO_INATIVA,
+                            fg_color=("gray20", "gray20"))
+        self.indice_cotacao_ativa = None
+        self.linhas_resultado = []
+        self._preencher_tabela([])
+        self._atualizar_sei_e_sis([], "")
+        self.mapa_fornecedores = {}
+        self.lista_empresas_mapa = []
 
     def _preencher_tabela(self, linhas):
         for item in self.tabela.get_children():
