@@ -82,23 +82,30 @@ def formatar_unitario_proposta(valor):
 # LEITURA DA ABA "Fornecedores"
 # ----------------------------------------------------------------------
 def carregar_fornecedores(caminho_arquivo):
-    """Lê a coluna A da aba 'Fornecedores' e devolve uma lista de dicts:
-    texto_completo (ex.: 'ETICA (703252)'), nome (sem código), nome_normalizado, codigo."""
+    """Lê nome/código na coluna A e CNPJ na coluna F da aba 'Fornecedores'.
+    Devolve texto_completo, nome, nome_normalizado, codigo e cnpj."""
     wb = load_workbook(caminho_arquivo, data_only=True, read_only=True)
     if "Fornecedores" not in wb.sheetnames:
         raise ValueError("A aba 'Fornecedores' não foi encontrada na planilha.")
     ws = wb["Fornecedores"]
     fornecedores = []
-    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+    for row in ws.iter_rows(min_row=2, max_col=6, values_only=True):
         valor = corrigir_acentuacao(row[0])
         if not valor:
             continue
         nome, codigo = extrair_nome_codigo_fornecedor(valor)
+        cnpj = row[5]
+        if isinstance(cnpj, (int, float)):
+            cnpj = f"{cnpj:014.0f}"
+        cnpj = str(cnpj).strip() if cnpj is not None else ""
+        if len(cnpj) == 14 and cnpj.isdigit():
+            cnpj = f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
         fornecedores.append({
             "texto_completo": str(valor).strip(),
             "nome": nome,
             "nome_normalizado": normalizar_texto(nome),
             "codigo": codigo,
+            "cnpj": cnpj,
         })
     wb.close()
     return fornecedores
@@ -410,7 +417,7 @@ class MapaMixin:
         janela = ctk.CTkToplevel(self)
         janela.title(f"Selecionar empresa - {nome_extraido}")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry(f"540x{140 + 36 * len(candidatos)}")
+        janela.geometry(f"760x{140 + 56 * len(candidatos)}")
         centralizar_janela(janela)
         janela.grab_set()
 
@@ -419,11 +426,12 @@ class MapaMixin:
             text=f'O arquivo indica "{nome_extraido}", mas há mais de uma empresa '
                  "correspondente na aba Fornecedores.\nSelecione a empresa participante:",
             font=FONTE_ENTRY, text_color=COR_TEXTO, justify="left",
-            wraplength=490).pack(padx=16, pady=(16, 10), anchor="w")
+            wraplength=710).pack(padx=16, pady=(16, 10), anchor="w")
 
         var_escolha = tk.IntVar(value=0)
         for i, cand in enumerate(candidatos):
-            ctk.CTkRadioButton(janela, text=cand["texto_completo"], variable=var_escolha,
+            texto = f'{cand["texto_completo"]}\nCNPJ: {cand.get("cnpj") or "Não informado"}'
+            ctk.CTkRadioButton(janela, text=texto, variable=var_escolha,
                                value=i, font=FONTE_ENTRY, text_color=COR_TEXTO
                                ).pack(anchor="w", padx=30, pady=4)
 
