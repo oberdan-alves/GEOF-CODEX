@@ -408,6 +408,17 @@ class MapaMixin:
                        for nome in erros]
 
         self.lista_empresas_mapa = resolvidos_ordenados
+        if resolvidos_ordenados and not erros:
+            # Registro exclusivo do indicador visual; não altera o cadastro do mapa.
+            caminho_lista = os.path.join(os.path.dirname(pasta_propostas),
+                                         f"EMPRESAS_LISTADAS_{codigo_cotacao}.json")
+            try:
+                with open(caminho_lista + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(resolvidos_ordenados, f, ensure_ascii=False, indent=2)
+                os.replace(caminho_lista + ".tmp", caminho_lista)
+            except OSError:
+                pass  # Uma falha no indicador não deve impedir a listagem.
+        getattr(self, "_atualizar_cores_etapas", lambda: None)()
         texto_final = ", ".join(resolvidos_ordenados + linhas_erro)
         self._mostrar_resultado_empresas(texto_final, codigo_cotacao, pasta_propostas)
 
@@ -1033,6 +1044,7 @@ class MapaMixin:
             with open(temporario, "w", encoding="utf-8") as f:
                 json.dump(conteudo, f, ensure_ascii=False, indent=2)
             os.replace(temporario, caminho_json)
+            getattr(self, "_atualizar_cores_etapas", lambda: None)()
         except Exception as e:
             messagebox.showerror("Erro ao salvar", f"Não foi possível salvar o cadastro:\n{e}")
 

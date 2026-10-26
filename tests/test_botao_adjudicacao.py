@@ -22,6 +22,8 @@ class Widget:
         pass
     def grid_columnconfigure(self, *args, **kwargs):
         pass
+    def configure(self, *args, **kwargs):
+        pass
 
 
 class Button(Widget):
@@ -37,6 +39,7 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
     def criar_app_sem_display(self):
         classe = principal.criar_app()
         app = classe.__new__(classe)
+        app.indice_cotacao_ativa = None
         Button.botoes = {}
         with patch.object(principal.ctk, 'CTkFrame', Widget), \
              patch.object(principal.ctk, 'CTkLabel', Widget), \

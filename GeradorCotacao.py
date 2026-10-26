@@ -914,6 +914,7 @@ class _AppCotacaoBase(ctk.CTk):
             linha_pasta, font=FONTE_ENTRY, height=32,
             placeholder_text=r"Cole aqui o caminho até ...\GEOF")
         self.entry_pasta_geof.grid(row=0, column=0, sticky="ew")
+        self.entry_pasta_geof.bind("<FocusOut>", lambda ev: self._atualizar_cores_etapas())
         ctk.CTkButton(linha_pasta, text="Procurar...", width=110, height=32,
                       font=FONTE_BOTAO, command=self._procurar_pasta_geof).grid(row=0, column=1, padx=(6, 0))
 
@@ -1048,6 +1049,7 @@ class _AppCotacaoBase(ctk.CTk):
     # GRUPOS DE BOTÕES (parte inferior) — chamam métodos vindos dos mixins
     # ------------------------------------------------------------------
     def _montar_grupos_botoes(self, parent):
+        self._botoes_etapas = {}
         area = ctk.CTkFrame(parent, fg_color=COR_FUNDO_APP)
         area.pack(fill="x", padx=20, pady=(0, 8))
         area.grid_columnconfigure((0, 1, 2, 3), weight=1)
@@ -1095,12 +1097,80 @@ class _AppCotacaoBase(ctk.CTk):
                      justify="center").pack(padx=8, pady=(6, 4))
 
         for texto, comando in botoes:
-            ctk.CTkButton(frame, text=texto, font=FONTE_BOTAO,
+            monitorado = texto in {"CRIAR PASTA COTAÇÃO", "PEDIDO", "LISTAR EMPRESAS",
+                                   "INCLUIR EMPRESAS MAPA", "ADJUDICAÇÃO", "ORDEM"}
+            acao = (lambda cmd=comando: self._executar_e_atualizar_etapas(cmd)) if monitorado else comando
+            botao = ctk.CTkButton(frame, text=texto, font=FONTE_BOTAO,
                           fg_color="#1a1a1a", hover_color="#333333",
                           text_color="#ffffff", height=26,
-                          command=comando).pack(fill="x", padx=10, pady=3)
+                          command=acao)
+            botao.pack(fill="x", padx=10, pady=3)
+            if monitorado:
+                self._botoes_etapas[texto] = botao
 
         ctk.CTkLabel(frame, text="", height=1).pack(pady=1)  # respiro inferior
+
+    def _executar_e_atualizar_etapas(self, comando):
+        try:
+            return comando()
+        finally:
+            self._atualizar_cores_etapas()
+
+    def _pasta_etapas_cotacao_ativa(self):
+        if self.indice_cotacao_ativa is None:
+            return None
+        codigo = self.entradas_cotacao[self.indice_cotacao_ativa].get().strip()
+        pasta = self.entry_pasta_geof.get().strip()
+        ano = self.entry_ano.get().strip()
+        tipo = getattr(self, "_sufixo_planilha_atual", "")
+        if not pasta or not tipo or len(ano) != 4 or len(codigo) != 3 or not codigo.isdigit():
+            return None
+        return os.path.join(pasta, tipo, f"PDPAS {ano}", "COTACAO", codigo), codigo
+
+    def _atualizar_cores_etapas(self):
+        botoes = getattr(self, "_botoes_etapas", {})
+        if not botoes:
+            return
+        concluidos = set()
+        contexto = self._pasta_etapas_cotacao_ativa()
+        if contexto:
+            pasta, codigo = contexto
+            try:
+                arquivos = set(os.listdir(pasta))
+            except OSError:
+                arquivos = set()
+            if os.path.isdir(os.path.join(pasta, "PROPOSTAS")):
+                concluidos.add("CRIAR PASTA COTAÇÃO")
+            if any(n.startswith(f"PEDIDO DE COTAÇÃO {codigo} ") and n.lower().endswith(".pdf") for n in arquivos):
+                concluidos.add("PEDIDO")
+            cadastro = {}
+            try:
+                with open(os.path.join(pasta, f"MAPA_EMPRESAS_{codigo}.json"), encoding="utf-8") as f:
+                    cadastro = json.load(f)
+                if not isinstance(cadastro, dict):
+                    cadastro = {}
+            except (OSError, ValueError):
+                pass
+            fornecedores = cadastro.get("fornecedores")
+            if isinstance(fornecedores, dict) and fornecedores:
+                concluidos.update({"LISTAR EMPRESAS", "INCLUIR EMPRESAS MAPA"})
+            try:
+                with open(os.path.join(pasta, f"EMPRESAS_LISTADAS_{codigo}.json"), encoding="utf-8") as f:
+                    listadas = json.load(f)
+                if isinstance(listadas, list) and listadas and all(isinstance(n, str) for n in listadas):
+                    concluidos.add("LISTAR EMPRESAS")
+                    if not isinstance(fornecedores, dict) or not all(n in fornecedores for n in listadas):
+                        concluidos.discard("INCLUIR EMPRESAS MAPA")
+            except (OSError, ValueError):
+                pass
+            if f"MAPA COMPARATIVO {codigo}.pdf" in arquivos:
+                concluidos.add("ADJUDICAÇÃO")
+            if any(n.startswith(f"ORDEM {codigo} ") and n.lower().endswith(".pdf") for n in arquivos):
+                concluidos.add("ORDEM")
+        for texto, botao in botoes.items():
+            feito = texto in concluidos
+            botao.configure(fg_color="#333333" if feito else "#1a1a1a",
+                            text_color="#90ee90" if feito else "#ffffff")
 
     # ------------------------------------------------------------------
     # PREENCHIMENTO DE DEFAULTS
@@ -1288,6 +1358,7 @@ class _AppCotacaoBase(ctk.CTk):
         if caminho:
             self.entry_pasta_geof.delete(0, "end")
             self.entry_pasta_geof.insert(0, caminho)
+            self._atualizar_cores_etapas()
 
     def _aplicar_mascara_matricula(self, entry):
         texto = entry.get()
@@ -1330,6 +1401,7 @@ class _AppCotacaoBase(ctk.CTk):
         valor_atual = f"Matrix_{ano}_{getattr(self, '_sufixo_planilha_atual', 'APS')}"
         self.var_nome_planilha.set(valor_atual)
         self._aplicar_cor_nome_planilha(valor_atual)
+        self._atualizar_cores_etapas()
 
     def _on_selecionar_nome_planilha(self, valor_completo):
         for suf in SUFIXOS_PLANILHA:
@@ -1337,6 +1409,7 @@ class _AppCotacaoBase(ctk.CTk):
                 self._sufixo_planilha_atual = suf
                 break
         self._aplicar_cor_nome_planilha(valor_completo)
+        self._atualizar_cores_etapas()
 
     def _aplicar_cor_nome_planilha(self, valor_completo):
         sufixo = "APS"
@@ -1352,6 +1425,7 @@ class _AppCotacaoBase(ctk.CTk):
     # --- COTAÇÃO ATIVA ---
     def _definir_cotacao_ativa(self, indice):
         if self.indice_cotacao_ativa == indice:
+            self._atualizar_cores_etapas()
             return
         if self.indice_cotacao_ativa is not None:
             self.entradas_cotacao[self.indice_cotacao_ativa].configure(
@@ -1359,6 +1433,7 @@ class _AppCotacaoBase(ctk.CTk):
         self.indice_cotacao_ativa = indice
         self.entradas_cotacao[indice].configure(
             border_color=COR_COTACAO_ATIVA, fg_color="#4a4110")
+        self._atualizar_cores_etapas()
 
     def _consultar_cotacao_ativa(self):
         """Busca somente a cotação ativa e preenche SEI/SIS/tabela imediatamente."""
@@ -1425,6 +1500,7 @@ class _AppCotacaoBase(ctk.CTk):
         encadear mais passos, como abrir o PDF ou recarregar o mapa de
         empresas) ou None se algo impediu a consulta — já mostrando o
         aviso/erro correspondente nesse caso."""
+        self._atualizar_cores_etapas()
         ano = self.entry_ano.get().strip()
         if not ano or len(ano) != 4:
             messagebox.showwarning("Atenção", "Informe o ANO com 4 dígitos.")
@@ -1496,6 +1572,7 @@ class _AppCotacaoBase(ctk.CTk):
         self._atualizar_sei_e_sis([], "")
         self.mapa_fornecedores = {}
         self.lista_empresas_mapa = []
+        self._atualizar_cores_etapas()
 
     def _preencher_tabela(self, linhas):
         for item in self.tabela.get_children():
