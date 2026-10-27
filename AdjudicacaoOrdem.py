@@ -26,6 +26,7 @@ import os
 import json
 from statistics import mean, median
 from math import isfinite
+from decimal import Decimal, ROUND_FLOOR
 from xml.sax.saxutils import escape
 import tkinter as tk
 from Mensagens import messagebox
@@ -210,6 +211,31 @@ def recalcular_referencias(item):
     item["referencias"] = dict(media=media, mediana=mediana, minimo=referencia,
                                superior=referencia * 1.5 if valores else None,
                                inferior=referencia * 0.5 if valores else None)
+
+
+def simular_referencia(valores, indice_negociacao):
+    """Calcula um cenário independente; None representa um valor excluído.
+
+    x <= média exige x <= média dos outros valores. Para x <= mediana,
+    o teto é o elemento central superior dos outros valores ordenados.
+    O menor dos dois tetos satisfaz a regra da referência, sem iterações.
+    """
+    numeros = [Decimal(str(v)) if v is not None else None for v in valores]
+    if any(v is not None and (not v.is_finite() or v <= 0) for v in numeros):
+        raise ValueError("Use apenas valores positivos e finitos.")
+    incluidos = [v for v in numeros if v is not None]
+    media = sum(incluidos) / len(incluidos) if incluidos else None
+    mediana = median(incluidos) if incluidos else None
+    referencia = min(media, mediana) if incluidos else None
+    alvo = numeros[indice_negociacao] if 0 <= indice_negociacao < len(numeros) else None
+    outros = sorted(v for i, v in enumerate(numeros) if v is not None and i != indice_negociacao)
+    limite = None
+    if alvo is not None and outros:
+        teto = min(sum(outros) / len(outros), outros[len(outros) // 2])
+        limite = teto.quantize(Decimal('0.01'), rounding=ROUND_FLOOR)
+    return dict(media=media, mediana=mediana, referencia=referencia, limite=limite,
+                alvo=alvo, aceita=(alvo <= referencia if alvo is not None else None),
+                quantidade=len(incluidos))
 
 
 def aplicar_retiradas(item, fornecedores=(), pesquisas=()):
@@ -1422,6 +1448,116 @@ class AdjudicacaoOrdemMixin:
             messagebox.showerror("Erro ao salvar tela", str(erro))
             return False
 
+    def _abrir_simulador_referencia(self, parent, item, pesquisas, titulos):
+        """Janela descartável: não altera o item nem grava arquivos da cotação."""
+        janela = ctk.CTkToplevel(parent)
+        janela.title(f"Simulação da referência — Item {item['numero_item']}")
+        janela.geometry("1100x780")
+        janela.minsize(900, 600)
+        maximizar_janela(janela)
+        janela.grab_set()
+        fonte = ("Segoe UI", 17)
+        ctk.CTkLabel(janela, text=f"SIMULAÇÃO — ITEM {item['numero_item']} — {item['codigo']}",
+                     font=("Segoe UI", 21, "bold")).pack(anchor="w", padx=20, pady=(12, 6))
+        ctk.CTkLabel(janela, text="Edite qualquer valor, desmarque para retirar ou adicione uma fonte. "
+                     "Selecione em NEGOCIAR o preço que deseja ajustar.\n"
+                     "Os demais valores incluídos ficam fixos no cálculo do teto. Nada será salvo na cotação.",
+                     font=fonte, justify="left", wraplength=1000).pack(anchor="w", padx=20, pady=6)
+        rodape = ctk.CTkFrame(janela, fg_color="transparent")
+        rodape.pack(side="bottom", fill="x", padx=20, pady=12)
+        resultado = ctk.CTkLabel(janela, text="", font=fonte, justify="left", wraplength=1000)
+        resultado.pack(side="bottom", fill="x", padx=20, pady=10)
+        grade = ctk.CTkScrollableFrame(janela)
+        grade.pack(fill="both", expand=True, padx=20, pady=8)
+        grade.grid_columnconfigure(1, weight=1)
+        for coluna, texto in enumerate(("INCLUIR", "FONTE / FORNECEDOR", "VALOR UNITÁRIO", "NEGOCIAR")):
+            ctk.CTkLabel(grade, text=texto, font=FONTE_BOTAO).grid(row=0, column=coluna, padx=12, pady=8)
+        linhas = []
+        alvo = tk.IntVar(master=janela, value=0)
+
+        def alterado():
+            resultado.configure(text="Cenário alterado. Clique em CALCULAR SIMULAÇÃO.", text_color=COR_TEXTO)
+
+        def adicionar(nome="Nova fonte", valor=None, incluir=True):
+            i = len(linhas)
+            var = tk.BooleanVar(master=janela, value=incluir)
+            ctk.CTkCheckBox(grade, text="", variable=var, width=30,
+                            command=alterado).grid(row=i+1, column=0, padx=12, pady=6)
+            nome_entry = ctk.CTkEntry(grade, font=fonte, height=36)
+            nome_entry.grid(row=i+1, column=1, padx=12, pady=6, sticky="ew")
+            nome_entry.insert(0, nome)
+            entry = ctk.CTkEntry(grade, font=fonte, height=36, width=170)
+            entry.grid(row=i+1, column=2, padx=12, pady=6)
+            texto_valor = formatar_pesquisa(valor)
+            if valor is not None and Decimal(str(valor)) != Decimal(str(valor)).quantize(Decimal('.01')):
+                texto_valor = f"{valor:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            entry.insert(0, texto_valor)
+            ctk.CTkRadioButton(grade, text="", variable=alvo, value=i, width=30, command=alterado).grid(
+                row=i+1, column=3, padx=12, pady=6)
+            linhas.append((var, nome_entry, entry))
+            alterado()
+            entry.bind("<KeyRelease>", lambda ev: alterado())
+
+        chaves_ativas = {p.get("fornecedor_chave", p["fornecedor"]) for p in item["propostas"]}
+        propostas = item.get("propostas_originais") or item["propostas"]
+        for p in propostas:
+            adicionar(p["fornecedor"], p["unitario"],
+                      p.get("fornecedor_chave", p["fornecedor"]) in chaves_ativas)
+        for i, valor in enumerate(pesquisas):
+            adicionar(f"Pesquisa {i+1} — {titulos[i]}", valor, valor is not None)
+        escolhido = item.get("vencedor_idx") or 0
+        if item["propostas"]:
+            chave = item["propostas"][min(escolhido, len(item["propostas"])-1)].get("fornecedor_chave",
+                        item["propostas"][min(escolhido, len(item["propostas"])-1)]["fornecedor"])
+            alvo.set(next((i for i, p in enumerate(propostas)
+                           if p.get("fornecedor_chave", p["fornecedor"]) == chave), 0))
+
+        def calcular(usar_teto=False):
+            try:
+                valores = [numero_pesquisa(campo.get()) if var.get() else None
+                           for var, _, campo in linhas]
+                dados = simular_referencia(valores, alvo.get())
+            except ValueError:
+                resultado.configure(text="Valor inválido. Use números positivos, como 2.950,00, ou deixe vazio.",
+                                    text_color="#FF7777")
+                return
+            if usar_teto and dados['limite'] is not None and dados['limite'] > 0:
+                campo = linhas[alvo.get()][2]
+                campo.delete(0, "end")
+                campo.insert(0, formatar_pesquisa(dados['limite']))
+                return calcular()
+            if not dados['quantidade']:
+                resultado.configure(text="Inclua pelo menos um valor para calcular a referência.", text_color=COR_TEXTO)
+                return
+            texto = (f"Valores incluídos: {dados['quantidade']}    |    Média: {formatar_pesquisa(dados['media'])}"
+                     f"    |    Mediana: {formatar_pesquisa(dados['mediana'])}\n"
+                     f"REFERÊNCIA SIMULADA: {formatar_pesquisa(dados['referencia'])}\n")
+            if dados['alvo'] is None:
+                texto += "Inclua e preencha o valor selecionado em NEGOCIAR para calcular seu teto."
+            else:
+                nome = linhas[alvo.get()][1].get()
+                texto += (f"{nome}: {formatar_pesquisa(dados['alvo'])} — "
+                          + ("DENTRO" if dados['aceita'] else "ACIMA") + " da referência simulada.\n")
+                if dados['limite'] is None:
+                    texto += "Sem outros valores incluídos, a referência é o próprio preço; não há teto independente."
+                else:
+                    texto += (f"Maior preço em centavos que fica dentro da referência recalculada: "
+                              f"{formatar_pesquisa(dados['limite'])}.\n"
+                              "Regra: menor entre média e mediana, mantendo os demais valores deste cenário. "
+                              "As retiradas são manuais; os limites de 50% não excluem valores automaticamente.")
+            resultado.configure(text=texto, text_color=COR_TEXTO)
+
+        def fechar():
+            janela.destroy()
+            parent.grab_set()
+
+        ctk.CTkButton(rodape, text="ADICIONAR VALOR", command=adicionar).pack(side="left", padx=4)
+        ctk.CTkButton(rodape, text="CALCULAR SIMULAÇÃO", command=calcular).pack(side="left", padx=4)
+        ctk.CTkButton(rodape, text="TESTAR PREÇO LIMITE", command=lambda: calcular(True)).pack(side="left", padx=4)
+        ctk.CTkButton(rodape, text="FECHAR SIMULAÇÃO", command=fechar).pack(side="right", padx=4)
+        janela.protocol("WM_DELETE_WINDOW", fechar)
+        calcular()
+
     def _perguntar_pesquisas_precos(self, mapa_itens):
         """Fecha pesquisa, revisão e vencedor de um item antes de avançar."""
         ativos = [item for item in mapa_itens if not item.get("cancelado")]
@@ -1497,6 +1633,12 @@ class AdjudicacaoOrdemMixin:
                 messagebox.showerror("Preço inválido", "Use valores positivos, como 1.234,56, ou deixe vazio.", parent=janela)
                 return None
 
+        def abrir_simulacao():
+            precos = ler()
+            if precos is not None:
+                item_simulado = dict(atuais(), vencedor_idx=vencedor.get())
+                self._abrir_simulador_referencia(janela, item_simulado, precos, nomes())
+
         def atualizar_revisao():
             item = atuais()
             for widget in revisao.winfo_children():
@@ -1515,6 +1657,8 @@ class AdjudicacaoOrdemMixin:
             referencia_card.pack(side="left", padx=16)
             ctk.CTkLabel(referencia_card, text=f"REFERÊNCIA: {formatar_pesquisa(ref['minimo']) or '—'}",
                          font=("Segoe UI", 23, "bold"), text_color="#FFFFFF").pack(padx=12, pady=6)
+            ctk.CTkButton(linha_resumo, text="SIMULAR REFERÊNCIA", font=FONTE_BOTAO,
+                          command=abrir_simulacao).pack(pady=6)
             valores = [(p["fornecedor"], p["unitario"], "fornecedor", p.get("fornecedor_chave", p["fornecedor"]))
                        for p in item["propostas"]]
             for titulo, chave, acima in [("PREÇOS ACIMA DE 50%", "superior", True),
