@@ -53,6 +53,108 @@ from GeradorCotacao import (
 from Mapa import carregar_fornecedores_completo
 
 TITULOS_PESQUISA_PADRAO = ("Média¹ Mapa GDF", "Mediana² Painel Federal")
+STATUS_ITEM = {
+    "DESERTA": "Não compareceu nenhum interessado: nenhum fornecedor apresentou proposta ou manifestou interesse.",
+    "FRACASSADA": "Houve participantes, mas nenhuma proposta ou licitante foi considerado válido: propostas desclassificadas por preços incompatíveis ou participantes inabilitados por não cumprirem os requisitos do edital.",
+    "REVOGADA": "Processo encerrado por razões de conveniência e oportunidade, por interesse público, diante de fato novo ou superveniente que tornou a contratação desnecessária ou inadequada.",
+    "ANULADA": "Anulação obrigatória do procedimento em razão de ilegalidade insanável em uma de suas etapas, vício que não pode ser corrigido.",
+}
+
+
+def texto_status_item(item):
+    status = item.get("status_item")
+    return f"DISPENSA DE LICITAÇÃO {status}" if status in STATUS_ITEM else ""
+
+
+def observacoes_status_itens(itens):
+    return "\n".join(f"ITEM {it['numero_item']} — {texto_status_item(it)}. {STATUS_ITEM[it['status_item']]}"
+                     for it in itens if texto_status_item(it))
+
+
+def atualizar_status_relatorio(texto, texto_auto):
+    """Atualiza os desfechos automáticos sem substituir as demais edições."""
+    situacoes = {}
+    vencedores = {}
+    item = None
+    em_itens = False
+    observacoes = []
+    for linha in texto_auto.splitlines():
+        if linha == "3. ANÁLISE POR ITEM":
+            em_itens = True
+        elif linha.startswith("4. PESQUISA"):
+            em_itens = False
+        if em_itens and linha.startswith("ITEM "):
+            item = linha
+        if em_itens and linha.startswith("Situação:"):
+            situacoes[item] = linha
+        if em_itens and linha.startswith("Empresa vencedora"):
+            vencedores[item] = linha
+        if linha.startswith("ITEM ") and " — DISPENSA DE LICITAÇÃO " in linha and not em_itens:
+            observacoes.append(linha)
+    saida = []
+    em_itens = False
+    em_observacoes = False
+    item = None
+    for linha in texto.splitlines():
+        if linha == "3. ANÁLISE POR ITEM":
+            em_itens = True
+        elif linha.startswith("4. PESQUISA"):
+            em_itens = False
+        elif linha == "5. OBSERVAÇÕES DO MAPA COMPARATIVO":
+            em_observacoes = True
+        elif linha == "6. CONCLUSÃO":
+            if em_observacoes:
+                saida.extend(observacoes)
+            em_observacoes = False
+        if em_itens and linha.startswith("ITEM "):
+            item = linha
+            saida.append(linha)
+            if "DISPENSA DE LICITAÇÃO" in situacoes.get(item, ""):
+                saida.append(situacoes[item])
+            continue
+        if em_itens and linha.startswith("Situação:"):
+            if "DISPENSA DE LICITAÇÃO" in situacoes.get(item, ""):
+                continue
+            if linha.startswith("Situação: DISPENSA DE LICITAÇÃO"):
+                linha = situacoes.get(item, "Situação: item em análise na adjudicação.")
+        if em_itens and linha.startswith("Empresa vencedora"):
+            linha = vencedores.get(item, linha)
+        if em_observacoes and linha.startswith("ITEM ") and " — DISPENSA DE LICITAÇÃO " in linha:
+            continue
+        if em_observacoes and observacoes and linha == "Nenhuma observação registrada.":
+            continue
+        saida.append(linha)
+    return "\n".join(saida)
+
+
+def adicionar_dica_status(botao, texto):
+    estado = {"job": None, "janela": None}
+
+    def ocultar(event=None):
+        if estado['job'] is not None:
+            botao.after_cancel(estado['job'])
+            estado['job'] = None
+        if estado['janela'] is not None:
+            estado['janela'].destroy()
+            estado['janela'] = None
+
+    def mostrar():
+        estado['job'] = None
+        dica = ctk.CTkToplevel(botao)
+        estado['janela'] = dica
+        dica.overrideredirect(True)
+        dica.geometry(f"+{botao.winfo_rootx()}+{max(0, botao.winfo_rooty()-115)}")
+        ctk.CTkLabel(dica, text=texto, wraplength=440, justify="left",
+                     font=("Segoe UI", 15)).pack(padx=12, pady=10)
+
+    def agendar(event=None):
+        ocultar()
+        estado['job'] = botao.after(450, mostrar)
+
+    botao.bind("<Enter>", agendar)
+    botao.bind("<Leave>", ocultar)
+    botao.bind("<ButtonPress-1>", ocultar)
+    botao.bind("<Destroy>", ocultar)
 TEXTO_PESQUISA_PADRAO = 'Como pesquisa de preços foram consultados:\n1 - O preço médio do Mapa de Preços do GDF, conforme art. 88, inciso I e art. 90, § 1º, do Decreto 44.330/2023;\n2 - A mediana do Painel de Preços Federal no Compras.gov, conforme o art. 23, § 1º, inciso I, da Lei nº 14.133/2021 e art. 88, inciso II, do Decreto 44.330/2023;\n3 - Pesquisa direta com fornecedores, conforme art. 88, inciso IV e art. 108 do Decreto 44.330/2023.\n4 - Considerando o art. 90, § 3º do Decreto 44.330/2023 "Na impossibilidade de cumprimento do disposto no caput, deverá ser juntada aos autos comprovação e justificativa do agente responsável."\n5 - O preço de referência foi fixado com base no art. 102 Decreto 44.330/2023 "O valor de referência de cada item será o menor preço obtido após o cálculo da média e mediana final dos valores válidos contidos na pesquisa de preços."\nEm função do que se apresenta na planilha acima, das necessidades expostas no Termo de Referência e que o(s) produto(s) ofertado(s) atende(m) ao(s) requisito(s) de melhor proposta, prevista no edital referente à presente cotação, solicitamos de V.Sª o respaldo administrativo para declarar vencedora, por terem apresentado o menor preço e/ou menor prazo de entrega, a(s) seguinte(s) empresa(s) para o(s) respectivo(s) item(ns):'
 
 def montar_texto_pesquisa_justificativa(mapa_itens):
@@ -92,6 +194,8 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
                    f"Descrição: {item['descricao']}", f"Unidade: {item.get('un') or 'não informada'}"]
         if item.get("cancelado"):
             linhas.append("Situação: CANCELADO. Não participa do fechamento da adjudicação; não há conclusão de referência ou vencedor para este item neste relatório.")
+        elif texto_status_item(item):
+            linhas.append(f"Situação: {texto_status_item(item)}. {STATUS_ITEM[item['status_item']]}")
         else:
             linhas.append("Situação: item em análise na adjudicação.")
         linhas.append("Fontes externas registradas:")
@@ -142,7 +246,7 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
         if len(valores) < 3:
             linhas.append("Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte devem ser conferidos pelo responsável.")
         idx = item.get("vencedor_idx")
-        if isinstance(idx, int) and 0 <= idx < len(propostas):
+        if not texto_status_item(item) and isinstance(idx, int) and 0 <= idx < len(propostas):
             p = propostas[idx]
             linhas.append(f"Empresa vencedora selecionada: {p['fornecedor']} — {moeda(p['unitario'])}. A referência estatística e o preço da vencedora são informações distintas.")
         else:
@@ -245,7 +349,7 @@ def aplicar_retiradas(item, fornecedores=(), pesquisas=()):
     item["pesquisas"] = valores_pesquisa(item)
     for indice in pesquisas:
         item["pesquisas"][indice] = None
-    item["vencedor_idx"] = 0 if item["propostas"] else None
+    item["vencedor_idx"] = 0 if item["propostas"] and not texto_status_item(item) else None
     recalcular_referencias(item)
 
 
@@ -268,7 +372,8 @@ def retornar_fornecedor(item, chave):
     item["precos_retirados"] = [p for p in item.get("precos_retirados", []) if identificador(p) != chave]
     item["retiradas_pendentes"] = [r for r in item.get("retiradas_pendentes", []) if r[1] != chave]
     item.setdefault("justificativas_retirada", {}).pop(chave, None)
-    item["vencedor_idx"] = next((i for i, p in enumerate(propostas) if p is escolhido), 0)
+    item["vencedor_idx"] = (next((i for i, p in enumerate(propostas) if p is escolhido), 0)
+                             if not texto_status_item(item) else None)
     recalcular_referencias(item)
     return True
 
@@ -340,7 +445,7 @@ def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
     linha_fonte = 2
     for indice, item in enumerate(itens):
         r = 9 + indice * 4
-        propostas = [] if item.get('cancelado') else item['propostas']
+        propostas = [] if item.get('cancelado') or texto_status_item(item) else item['propostas']
         ws.cell(r, 1, item['numero_item'])
         ws.cell(r+2, 1, item['codigo'])
         for pos in range(3):
@@ -357,7 +462,7 @@ def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
                 ws.cell(r+2, c+1, proposta.get('prazo'))
                 ws.cell(r+2, c+2, proposta.get('marca') or '')
             else:
-                ws.cell(r, c, 'CANCELADO' if item.get('cancelado') else 'DESERTO' if not propostas else 'PROPOSTA NÃO APRESENTADA')
+                ws.cell(r, c, 'CANCELADO' if item.get('cancelado') else texto_status_item(item) or ('DESERTO' if not propostas else 'PROPOSTA NÃO APRESENTADA'))
         ws.merge_cells(start_row=r+3, start_column=1, end_row=r+3, end_column=3)
         ws.cell(r+3, 1, 'Saldo remanescente')
         ws.cell(r+3, 4, item['saldo'])
@@ -501,7 +606,7 @@ def montar_declaracao_vencedores(mapa_itens):
     numeros_por_vencedor = {}
     ordem_primeira_aparicao = []
     for item in mapa_itens:
-        if item.get("cancelado"):
+        if item.get("cancelado") or texto_status_item(item):
             continue
         propostas = item["propostas"]
         if not propostas:
@@ -643,7 +748,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     linha_idx = 1
     for indice_item, item in enumerate(mapa_itens):
         cancelado = bool(item.get("cancelado"))
-        propostas = [] if cancelado else item["propostas"]
+        propostas = [] if cancelado or texto_status_item(item) else item["propostas"]
         top3 = propostas[:3]
         cor_bloco = CORES_ALTERNADAS[indice_item % 2]
         linha_topo_bloco = linha_idx
@@ -664,7 +769,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                 if cancelado:
                     texto_vazio = "CANCELADO"
                 else:
-                    texto_vazio = "DESERTO" if not item["propostas"] else "PROPOSTA NÃO APRESENTADA"
+                    texto_vazio = texto_status_item(item) or ("DESERTO" if not item["propostas"] else "PROPOSTA NÃO APRESENTADA")
                 linha1 += [Paragraph(texto_vazio, estilo_cel_bold), "", ""]
         pesquisas = valores_pesquisa(item)
         ref = item.get("referencias", {})
@@ -1202,11 +1307,12 @@ class AdjudicacaoOrdemMixin:
                 aplicar_retiradas(item, decisao.get("fornecedores_retirados", []))
                 item["vencedor_idx"] = decisao.get("vencedor_idx")
                 item["cancelado"] = bool(decisao.get("cancelado"))
+                item["status_item"] = decisao.get("status_item", "")
 
         # agrupa os itens vencidos por fornecedor (só o vencedor de cada item)
         ordens_por_fornecedor = {}   # nome_normalizado -> (texto_completo, [ (item, proposta), ... ])
         for item in mapa_itens:
-            if item.get("cancelado"):
+            if item.get("cancelado") or texto_status_item(item):
                 continue
             propostas = item["propostas"]
             if not propostas:
@@ -1314,7 +1420,7 @@ class AdjudicacaoOrdemMixin:
         for item in mapa_itens:
             decisao = decisoes.get(str(item["numero_item"]), {})
             item["propostas_originais"] = list(item["propostas"])
-            for campo in ("pesquisas", "precos_retirados", "observacaoitem", "cancelado",
+            for campo in ("pesquisas", "precos_retirados", "observacaoitem", "cancelado", "status_item",
                           "titulos_pesquisa", "justificativas_retirada", "retiradas_pendentes"):
                 if campo in decisao:
                     item[campo] = decisao[campo]
@@ -1331,9 +1437,10 @@ class AdjudicacaoOrdemMixin:
         # 3) monta os textos automáticos (objeto e observações padrão)
         objeto_auto = gerar_objeto_automatico(mapa_itens)
         itens_poucas_propostas = [str(it["numero_item"]) for it in mapa_itens
-                                   if not it.get("cancelado") and 0 < len(it["propostas"]) < 3]
+                                   if not it.get("cancelado") and not texto_status_item(it) and 0 < len(it["propostas"]) < 3]
         observacoes_auto = (TEXTO_OBSERVACAO_PADRAO.format(itens=", ".join(itens_poucas_propostas))
                              if itens_poucas_propostas else "")
+        observacoes_auto = "\n\n".join(t for t in (observacoes_auto, observacoes_status_itens(mapa_itens)) if t)
 
         dados_extra = self._perguntar_dados_finalizacao(
             objeto_auto, observacoes_auto, montar_texto_pesquisa_justificativa(mapa_itens))
@@ -1412,7 +1519,7 @@ class AdjudicacaoOrdemMixin:
                      justify="left").pack(fill="x", padx=16, pady=12)
         texto = ctk.CTkTextbox(janela, font=("Segoe UI", 18), wrap="word")
         texto.pack(fill="both", expand=True, padx=16, pady=8)
-        texto.insert("1.0", salvo.get("texto", texto_auto))
+        texto.insert("1.0", atualizar_status_relatorio(salvo["texto"], texto_auto) if salvo.get("texto") else texto_auto)
         resultado = []
         def salvar():
             conteudo = texto.get("1.0", "end").strip()
@@ -1663,19 +1770,43 @@ class AdjudicacaoOrdemMixin:
                 item_simulado = dict(atuais(), vencedor_idx=vencedor.get())
                 self._abrir_simulador_referencia(janela, item_simulado, precos, nomes())
 
+        def selecionar_status(status):
+            if ler() is None:
+                return
+            item = atuais()
+            preservar_selecoes()
+            item["status_item"] = "" if item.get("status_item") == status else status
+            vencedor.set(-1 if texto_status_item(item) else (0 if item["propostas"] else -1))
+            atualizar_revisao()
+            salvar_atual()
+
+        def selecionar_empresa():
+            preservar_selecoes()
+            atuais()["status_item"] = ""
+            atualizar_revisao()
+            salvar_atual()
+
+        def indice_vencedor():
+            item = atuais()
+            return vencedor.get() if item["propostas"] and not texto_status_item(item) else None
+
+        def preservar_selecoes():
+            atuais()["retiradas_pendentes"] = [[grupo, c] for grupo, c, var in selecoes if var.get()]
+            atuais()["justificativas_retirada"] = {c: campo.get() for c, campo in justificativas.items()}
+
         def retornar(chave):
             precos = ler()
             if precos is None:
                 return
             item = atuais()
             item["pesquisas"] = precos
-            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["vencedor_idx"] = indice_vencedor()
             item["retiradas_pendentes"] = [[grupo, c] for grupo, c, var in selecoes if var.get()]
             item["justificativas_retirada"] = {c: campo.get() for c, campo in justificativas.items()}
             if not retornar_fornecedor(item, chave):
                 messagebox.showwarning("Retornar fornecedor", "A proposta original não foi localizada no cadastro deste item.", parent=janela)
                 return
-            vencedor.set(item["vencedor_idx"])
+            vencedor.set(item["vencedor_idx"] if item["vencedor_idx"] is not None else -1)
             aplicado[0] = list(precos)
             atualizar_revisao()
             salvar_atual()
@@ -1693,6 +1824,13 @@ class AdjudicacaoOrdemMixin:
 
         def atualizar_revisao():
             item = atuais()
+            status_texto = texto_status_item(item)
+            if status_texto:
+                vencedor.set(-1)
+            for status, botao in botoes_status.items():
+                selecionado = item.get("status_item") == status
+                botao.configure(fg_color="#805000" if selecionado else COR_DESTAQUE,
+                                text_color="#FFFF80" if selecionado else "#FFFFFF")
             for widget in revisao.winfo_children():
                 widget.destroy()
             selecoes.clear()
@@ -1748,8 +1886,10 @@ class AdjudicacaoOrdemMixin:
                 nome = truncar_em_palavra(nome, 60)
                 linha = ctk.CTkFrame(classificacao, fg_color="transparent")
                 linha.pack(fill="x", padx=8, pady=4)
-                ctk.CTkRadioButton(linha, text=f"{pos+1}º colocado — {nome} — Unitário: {formatar_pesquisa(proposta['unitario'])}",
-                    variable=vencedor, value=pos, font=fonte, height=30).pack(side="left", padx=(8, 12))
+                ctk.CTkRadioButton(linha, text=(f"{status_texto} — " if status_texto else "") +
+                    f"{pos+1}º colocado — {nome} — Unitário: {formatar_pesquisa(proposta['unitario'])}",
+                    variable=vencedor, value=pos, command=selecionar_empresa,
+                    font=fonte, height=30).pack(side="left", padx=(8, 12))
                 chave = proposta.get("fornecedor_chave", proposta["fornecedor"])
                 grupo = "analise"
                 var = tk.BooleanVar(master=janela, value=[grupo, chave] in item.get("retiradas_pendentes", []))
@@ -1769,7 +1909,7 @@ class AdjudicacaoOrdemMixin:
                 for proposta in historico_analise:
                     mostrar_retirado(revisao, proposta, 900)
             if not item["propostas"]:
-                ctk.CTkLabel(rodape, text="Sem propostas classificadas — item sem vencedor.", font=fonte).pack(pady=10)
+                ctk.CTkLabel(rodape, text=status_texto or "Sem propostas classificadas — item sem vencedor.", font=fonte).pack(pady=10)
 
         def recalcular():
             precos = ler()
@@ -1800,7 +1940,7 @@ class AdjudicacaoOrdemMixin:
             for i, entry in enumerate(entradas):
                 entry.delete(0, "end")
                 entry.insert(0, formatar_pesquisa(item["pesquisas"][i]))
-            vencedor.set(next((i for i, p in enumerate(item["propostas"]) if p is escolhido), 0))
+            vencedor.set(-1 if texto_status_item(item) else next((i for i, p in enumerate(item["propostas"]) if p is escolhido), 0))
             aplicado[0] = list(item["pesquisas"])
             atualizar_revisao()
             return True
@@ -1816,7 +1956,7 @@ class AdjudicacaoOrdemMixin:
             selecoes.clear()
             item["pesquisas"] = valores_pesquisa(item)
             recalcular_referencias(item)
-            vencedor.set(item.get("vencedor_idx") or 0)
+            vencedor.set(-1 if texto_status_item(item) else (item.get("vencedor_idx") or 0))
             for campo, texto in zip(titulos, item.get("titulos_pesquisa") or nomes()):
                 campo.delete(0, "end")
                 campo.insert(0, texto)
@@ -1833,9 +1973,9 @@ class AdjudicacaoOrdemMixin:
             aplicado[0] = list(item["pesquisas"])
             atualizar_revisao()
             voltar_botao.configure(state="normal" if estado["indice"] else "disabled")
-            avancar.configure(text="CONFIRMAR EMPRESA VENCEDORA POR ITEM E PRÓXIMO" if estado["indice"] < len(ativos)-1 else "CONFIRMAR EMPRESA VENCEDORA POR ITEM E CONCLUIR")
+            avancar.configure(text="CONFIRMAR EMPRESA / STATUS\nE PRÓXIMO" if estado["indice"] < len(ativos)-1 else "CONFIRMAR EMPRESA / STATUS\nE CONCLUIR")
 
-        campos_pesquisa = ("pesquisas", "titulos_pesquisa", "observacaoitem", "vencedor_idx",
+        campos_pesquisa = ("pesquisas", "titulos_pesquisa", "observacaoitem", "vencedor_idx", "status_item",
                            "fornecedores_retirados", "precos_retirados", "referencias",
                            "justificativas_retirada", "retiradas_pendentes")
 
@@ -1848,7 +1988,7 @@ class AdjudicacaoOrdemMixin:
             recalcular_referencias(item)
             item["titulos_pesquisa"] = nomes()
             item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
-            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["vencedor_idx"] = indice_vencedor()
             item["justificativas_retirada"] = {chave: campo.get() for chave, campo in justificativas.items()}
             item["retiradas_pendentes"] = [[grupo, chave] for grupo, chave, var in selecoes if var.get()]
             return self._salvar_campos_telas([item], campos_pesquisa)
@@ -1861,7 +2001,7 @@ class AdjudicacaoOrdemMixin:
             item = atuais()
             item["propostas"] = list(item["propostas_originais"])
             item.update(pesquisas=[None, None], titulos_pesquisa=list(TITULOS_PESQUISA_PADRAO),
-                        observacaoitem="", vencedor_idx=0 if item["propostas"] else None,
+                        observacaoitem="", status_item="", vencedor_idx=0 if item["propostas"] else None,
                         fornecedores_retirados=[], precos_retirados=[],
                         justificativas_retirada={}, retiradas_pendentes=[])
             recalcular_referencias(item)
@@ -1876,7 +2016,7 @@ class AdjudicacaoOrdemMixin:
                 messagebox.showwarning("Recalcular", "Clique em RECALCULAR para atualizar os preços e aplicar as retiradas antes de confirmar.", parent=janela)
                 return
             item = atuais()
-            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["vencedor_idx"] = indice_vencedor()
             item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
             if not salvar_atual():
                 return
@@ -1891,7 +2031,7 @@ class AdjudicacaoOrdemMixin:
             if estado["indice"] == 0 or not recalcular():
                 return
             item = atuais()
-            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["vencedor_idx"] = indice_vencedor()
             item["observacaoitem"] = entry_observacao.get("1.0", "end").strip()
             if not salvar_atual():
                 return
@@ -1899,13 +2039,20 @@ class AdjudicacaoOrdemMixin:
             mostrar_item()
 
         revisao = None
-        voltar_botao = ctk.CTkButton(botoes, text="VOLTAR", font=fonte, height=44, width=120, command=voltar)
+        voltar_botao = ctk.CTkButton(botoes, text="VOLTAR", font=("Segoe UI", 14), height=44, width=85, command=voltar)
         voltar_botao.pack(side="left", padx=(0, 12))
-        ctk.CTkButton(botoes, text="RECALCULAR", font=destaque, height=44, width=200, command=recalcular).pack(side="left", padx=(0, 12))
-        ctk.CTkButton(botoes, text="LIMPAR DADOS", font=fonte, command=limpar).pack(side="left", padx=8)
+        ctk.CTkButton(botoes, text="RECALCULAR", font=("Segoe UI", 16, "bold"), height=44, width=135, command=recalcular).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(botoes, text="LIMPAR DADOS", font=("Segoe UI", 14), width=105, command=limpar).pack(side="left", padx=8)
         janela.protocol("WM_DELETE_WINDOW", fechar)
-        avancar = ctk.CTkButton(botoes, text="", font=fonte, height=44, command=confirmar_item)
-        avancar.pack(side="left", fill="x", expand=True)
+        botoes_status = {}
+        for status, descricao in STATUS_ITEM.items():
+            botao = ctk.CTkButton(botoes, text=status, font=("Segoe UI", 14, "bold"),
+                                width=90, height=44, command=lambda s=status: selecionar_status(s))
+            botao.pack(side="left", padx=3)
+            adicionar_dica_status(botao, f"DISPENSA DE LICITAÇÃO {status}\n{descricao}")
+            botoes_status[status] = botao
+        avancar = ctk.CTkButton(botoes, text="", font=("Segoe UI", 13), width=210, height=44, command=confirmar_item)
+        avancar.pack(side="left", padx=(8, 0))
         mostrar_item()
         self.wait_window(janela)
         return resultado or None
@@ -2041,6 +2188,7 @@ class AdjudicacaoOrdemMixin:
                 "codigo": item["codigo"],
                 "vencedor_idx": item.get("vencedor_idx"),
                 "cancelado": bool(item.get("cancelado")),
+                "status_item": item.get("status_item", ""),
                 "fornecedores_retirados": item.get("fornecedores_retirados", []),
                 "precos_retirados": item.get("precos_retirados", []),
                 "observacaoitem": item.get("observacaoitem", ""),
