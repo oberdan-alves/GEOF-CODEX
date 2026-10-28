@@ -210,7 +210,7 @@ class RelatorioPesquisaTest(unittest.TestCase):
         for observacao in (primeiro['observacaoitem'], segundo['observacaoitem']):
             self.assertEqual(texto.count(observacao), 1)
             self.assertNotIn(observacao, topico4)
-        self.assertIn(adj.TEXTO_PESQUISA_PADRAO, topico4)
+        self.assertIn(adj.corrigir_textos_relatorio(adj.TEXTO_PESQUISA_PADRAO), topico4)
         self.assertIn('Complemento manual da justificativa.', topico4)
         self.assertIn('1,5 (Preço exorbitante) e por 0,5 (Preço inexequível)', texto)
         self.assertNotIn('não comprova se houve consulta', texto)

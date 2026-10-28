@@ -78,6 +78,12 @@ def corrigir_textos_relatorio(texto):
     texto = re.sub(r'(\bITEM\s+)(\d+)\.0+\b', r'\1\2', texto)
     texto = re.sub(r'(para o\(s\) item\(ns\) )([\d., ]+)(?=, uma vez)',
                    lambda m: m[1] + re.sub(r'\b(\d+)\.0+\b', r'\1', m[2]), texto)
+    texto = texto.replace(
+        'Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte devem ser conferidos pelo responsável.',
+        'Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte fazem parte do processo.')
+    texto = texto.replace(
+        'presente cotação, solicitamos de V.Sª o respaldo administrativo para declarar vencedora, por terem apresentado o menor preço e/ou menor prazo de entrega, a(s) seguinte(s) empresa(s) para o(s) respectivo(s) item(ns):',
+        'presente cotação.')
     return texto.replace('A comprovação das fontes, das propostas e dos pareceres mencionados deve acompanhar o processo.',
                          'A comprovação das fontes, das propostas e dos pareceres mencionados acompanham o processo.')
 
@@ -257,7 +263,7 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
         linhas += [f"REFERÊNCIA FINAL: menor entre média ({moeda(media)}) e mediana ({moeda(mediana)}) = {moeda(referencia)}.",
                    f"Limites finais de revisão: inferior = {moeda(referencia)} × 0,5 = {moeda(referencia*0.5)}; superior = {moeda(referencia)} × 1,5 = {moeda(referencia*1.5)}."]
         if len(valores) < 3:
-            linhas.append("Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte devem ser conferidos pelo responsável.")
+            linhas.append("Atenção: conjunto com menos de três valores. A justificativa e os documentos de suporte fazem parte do processo.")
         idx = item.get("vencedor_idx")
         if not texto_status_item(item) and isinstance(idx, int) and 0 <= idx < len(propostas):
             p = propostas[idx]

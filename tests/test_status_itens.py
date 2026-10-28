@@ -13,6 +13,27 @@ from test_tela_pesquisa_item import Widget, Var
 
 
 class StatusItensTest(unittest.TestCase):
+    def test_textos_justificativa_e_menos_tres_valores_no_relatorio(self):
+        it = item(precos=(100,), pesquisas=(None, None))
+        texto = adj.montar_texto_relatorio_pesquisa([it], '1', '2026', {
+            'texto_pesquisa': adj.TEXTO_PESQUISA_PADRAO + '\nComplemento manual.'})
+        aviso = ('Atenção: conjunto com menos de três valores. '
+                 'A justificativa e os documentos de suporte fazem parte do processo.')
+        self.assertIn(aviso, texto)
+        self.assertNotIn('devem ser conferidos pelo responsável', texto)
+        topico4 = texto.split('4. PESQUISA DE PREÇOS E JUSTIFICATIVA')[1].split('5. OBSERVAÇÕES')[0]
+        paragrafo = ('Em função do que se apresenta na planilha acima, das necessidades expostas no Termo de Referência '
+                     'e que o(s) produto(s) ofertado(s) atende(m) ao(s) requisito(s) de melhor proposta, '
+                     'prevista no edital referente à presente cotação.')
+        self.assertIn(paragrafo, topico4)
+        self.assertNotIn('solicitamos de V.Sª', topico4)
+        self.assertIn('Complemento manual.', topico4)
+        antigo = adj.TEXTO_PESQUISA_PADRAO + '\n' + aviso.replace('fazem parte do processo.', 'devem ser conferidos pelo responsável.')
+        corrigido = adj.corrigir_textos_relatorio(antigo)
+        self.assertIn(aviso, corrigido)
+        self.assertIn(paragrafo, corrigido)
+        self.assertNotIn('solicitamos de V.Sª', corrigido)
+
     def test_numeros_inteiros_e_conclusao_em_relatorio_novo_e_salvo(self):
         itens = [item(numero=1.0), item(numero=3.0)]
         itens[0]['status_item'] = 'FRACASSADA'
