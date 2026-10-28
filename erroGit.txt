@@ -1,0 +1,57 @@
+O erro acontece porque o Git encontrou o arquivo .git/index.lock, que normalmente serve para impedir que dois processos do Git alterem o mesmo repositório ao mesmo tempo.
+
+Na sua imagem, o problema ocorre ao executar:
+git reset --hard origin/main
+
+
+O erro está no repositório G:\Meu Drive\python\GeradorCotacao\.git\index.lock. Vamos corrigir isso sem precisar reinstalar o Git ou o Python.
+1. Feche os processos que podem estar usando o Git
+1. Feche outras janelas do VS Code que estejam usando esse projeto.
+2. Feche terminais que estejam executando scripts relacionados ao Git.
+3. Aguarde alguns segundos para o Google Drive terminar qualquer sincronização pendente.
+Importante: não apague o arquivo de bloqueio enquanto outro processo Git estiver trabalhando.
+2. Verifique se existe algum processo Git em execução
+Abra o terminal do VS Code, em PowerShell, e execute:
+Get-Process git,git-remote-https,git-credential-manager -ErrorAction SilentlyContinue
+
+
+Se aparecer algum processo, verifique se ele está realizando uma operação. Não encerre processos indiscriminadamente.
+
+Se não aparecer nenhum processo Git ativo, prossiga.
+3. Apague o arquivo de bloqueio
+No mesmo terminal, execute:
+Remove-Item ".git\index.lock" -Force
+
+
+Esse comando remove apenas o arquivo de bloqueio, não os arquivos do seu projeto.
+
+Se aparecer uma mensagem dizendo que o arquivo não existe, tudo bem: pode ser que ele já tenha sido removido.
+4. Execute novamente os comandos do Git
+Primeiro, atualize as informações do repositório remoto:
+git fetch origin
+
+
+Depois, confira se está na pasta correta e se a branch main existe no remoto:
+git branch -r
+
+
+Se aparecer origin/main, execute:
+git reset --hard origin/main
+
+
+Isso fará o repositório local voltar exatamente ao estado de origin/main.
+Atenção antes do último comando
+
+O comando git reset --hard origin/main descarta alterações locais não salvas em commit nos arquivos rastreados pelo Git. Se houver código que você deseja preservar, faça uma cópia antes de executá-lo.
+
+5. Se o erro voltar a aparecer
+Como seu projeto está dentro de G:\Meu Drive, o Google Drive pode estar interferindo no arquivo de bloqueio durante a sincronização.
+
+Nesse caso:
+- Pause temporariamente a sincronização do Google Drive.
+- Feche os processos Git ativos.
+- Remova novamente o .git\index.lock, se ele existir.
+- Execute git fetch origin e depois o comando de reset.
+Se o problema persistir, vale considerar manter o repositório Git fora da pasta sincronizada pelo Google Drive e sincronizar apenas os arquivos necessários.
+
+Minha recomendação: comece pelo passo 2 e depois pelo passo 3. Não precisa alterar seu GitHubParaLocal.py ainda.
