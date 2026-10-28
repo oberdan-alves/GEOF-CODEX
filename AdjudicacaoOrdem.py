@@ -24,6 +24,7 @@ cotação no E-mail Cotação); aqui só é importada, não redefinida.
 
 import os
 import json
+import re
 from statistics import mean, median
 from math import isfinite
 from decimal import Decimal, ROUND_FLOOR
@@ -47,6 +48,7 @@ from GeradorCotacao import (
     COR_CINZA_ADJ, COR_CIANO_ADJ, COR_VERDE_ADJ, COR_AMARELO_ADJ,
     CONTATOS_ORDEM_PADRAO,
     formatar_moeda, normalizar_texto, extrair_nome_codigo_fornecedor, truncar_em_palavra,
+    formatar_numero_inteiro,
     gerar_objeto_automatico,
     converter_pdf_para_jpg, exibir_preview_pdf_jpg, montar_cabecalho_institucional,
 )
@@ -67,12 +69,23 @@ def texto_status_item(item):
 
 
 def observacoes_status_itens(itens):
-    return "\n".join(f"ITEM {it['numero_item']} — {texto_status_item(it)}. {STATUS_ITEM[it['status_item']]}"
+    return "\n".join(f"ITEM {formatar_numero_inteiro(it['numero_item'])} — {texto_status_item(it)}. {STATUS_ITEM[it['status_item']]}"
                      for it in itens if texto_status_item(it))
+
+
+def corrigir_textos_relatorio(texto):
+    """Atualiza também textos salvos, preservando as demais edições do usuário."""
+    texto = re.sub(r'(\bITEM\s+)(\d+)\.0+\b', r'\1\2', texto)
+    texto = re.sub(r'(para o\(s\) item\(ns\) )([\d., ]+)(?=, uma vez)',
+                   lambda m: m[1] + re.sub(r'\b(\d+)\.0+\b', r'\1', m[2]), texto)
+    return texto.replace('A comprovação das fontes, das propostas e dos pareceres mencionados deve acompanhar o processo.',
+                         'A comprovação das fontes, das propostas e dos pareceres mencionados acompanham o processo.')
 
 
 def atualizar_status_relatorio(texto, texto_auto):
     """Atualiza os desfechos automáticos sem substituir as demais edições."""
+    texto = corrigir_textos_relatorio(texto)
+    texto_auto = corrigir_textos_relatorio(texto_auto)
     situacoes = {}
     vencedores = {}
     item = None
@@ -263,7 +276,7 @@ def montar_texto_relatorio_pesquisa(itens, codigo, ano, dados, sei=""):
                "", "5. OBSERVAÇÕES DO MAPA COMPARATIVO", dados.get("observacoes") or "Nenhuma observação registrada.",
                "", "6. CONCLUSÃO", "As referências e as decisões por item estão discriminadas acima. As propostas retiradas não integram os cálculos finais. "
                "A comprovação das fontes, das propostas e dos pareceres mencionados deve acompanhar o processo."]
-    return "\n".join(linhas)
+    return corrigir_textos_relatorio("\n".join(linhas))
 
 
 def gerar_pdf_relatorio_pesquisa(caminho, texto):
@@ -1436,7 +1449,7 @@ class AdjudicacaoOrdemMixin:
 
         # 3) monta os textos automáticos (objeto e observações padrão)
         objeto_auto = gerar_objeto_automatico(mapa_itens)
-        itens_poucas_propostas = [str(it["numero_item"]) for it in mapa_itens
+        itens_poucas_propostas = [formatar_numero_inteiro(it["numero_item"]) for it in mapa_itens
                                    if not it.get("cancelado") and not texto_status_item(it) and 0 < len(it["propostas"]) < 3]
         observacoes_auto = (TEXTO_OBSERVACAO_PADRAO.format(itens=", ".join(itens_poucas_propostas))
                              if itens_poucas_propostas else "")

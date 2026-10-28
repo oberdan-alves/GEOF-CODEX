@@ -13,6 +13,26 @@ from test_tela_pesquisa_item import Widget, Var
 
 
 class StatusItensTest(unittest.TestCase):
+    def test_numeros_inteiros_e_conclusao_em_relatorio_novo_e_salvo(self):
+        itens = [item(numero=1.0), item(numero=3.0)]
+        itens[0]['status_item'] = 'FRACASSADA'
+        observacoes = adj.TEXTO_OBSERVACAO_PADRAO.format(itens='1.0, 3.0')
+        texto = adj.montar_texto_relatorio_pesquisa(itens, '1', '2026', {'observacoes': observacoes})
+        self.assertIn('item(ns) 1, 3, uma vez', texto)
+        self.assertIn('ITEM 1 —', texto)
+        self.assertIn('ITEM 3 —', texto)
+        self.assertIn('das propostas e dos pareceres mencionados acompanham o processo.', texto)
+        self.assertNotIn('deve acompanhar o processo', texto)
+        self.assertIn('ITEM 1 —', adj.observacoes_status_itens(itens))
+        antigo = texto.replace('ITEM 1 —', 'ITEM 1.0 —').replace('item(ns) 1, 3,', 'item(ns) 1.0, 3.0,')
+        antigo = antigo.replace('mencionados acompanham', 'mencionados deve acompanhar')
+        antigo += '\nComplemento manual: 2.0 mg.'
+        atualizado = adj.atualizar_status_relatorio(antigo, texto)
+        self.assertIn('item(ns) 1, 3, uma vez', atualizado)
+        self.assertNotIn('ITEM 1.0', atualizado)
+        self.assertIn('Complemento manual: 2.0 mg.', atualizado)
+        self.assertIn('mencionados acompanham o processo.', atualizado)
+
     def test_ordem_ignora_itens_com_status_salvo(self):
         with tempfile.TemporaryDirectory() as pasta:
             app = adj.AdjudicacaoOrdemMixin()
