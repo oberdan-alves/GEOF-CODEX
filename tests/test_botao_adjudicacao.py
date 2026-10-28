@@ -111,7 +111,7 @@ class BotaoAdjudicacaoTest(unittest.TestCase):
             self.assertEqual(etapas, ['cancelados', 'pesquisa_revisao_vencedor', 'dados_mapa', 'relatorio'])
             preview.assert_called_once()
             for nome in ('MAPA COMPARATIVO 178.pdf', 'MAPA COMPARATIVO 178.xlsx',
-                         'MAPA COMPARATIVO PRÉVIO RESUMIDO 178.pdf', 'RELATORIO DA PESQUISA 178.pdf'):
+                         'MAPA COMPARATIVO PRÉVIO RESUMIDO 178.pdf', 'RELATÓRIO DA PESQUISA.PDF'):
                 self.assertTrue((Path(pasta)/nome).is_file(), nome)
             self.assertTrue(list(Path(pasta).glob('MAPA COMPARATIVO 178*.jpg')))
             salvo = json.loads(cadastro.read_text(encoding='utf-8'))

@@ -1471,7 +1471,7 @@ class AdjudicacaoOrdemMixin:
         if texto_relatorio is None:
             return
         caminho_relatorio = os.path.join(self._pasta_cotacao_atual,
-            f"RELATORIO DA PESQUISA {self._codigo_cotacao_atual}.pdf")
+            "RELATÓRIO DA PESQUISA.PDF")
 
         base = f"MAPA COMPARATIVO {self._codigo_cotacao_atual}"
         caminho_pdf = os.path.join(self._pasta_cotacao_atual, base + ".pdf")
@@ -1533,16 +1533,16 @@ class AdjudicacaoOrdemMixin:
         aviso = ("Os dados da pesquisa mudaram desde a última versão. O texto salvo foi preservado; "
                  "use ATUALIZAR COM DADOS ATUAIS para reconstruí-lo e substituir as edições anteriores."
                  if salvo and salvo.get("base") != texto_auto else
-                 "Revise o texto antes de gerar o PDF. SALVAR TEXTO guarda as edições para reabrir depois.")
+                 "Revise o texto antes de gerar o PDF. SALVAR TEXTO guarda as edições e atualiza o PDF do relatório.")
         ctk.CTkLabel(janela, text=aviso, font=("Segoe UI", 18), wraplength=1150,
                      justify="left").pack(fill="x", padx=16, pady=12)
         texto = ctk.CTkTextbox(janela, font=("Segoe UI", 18), wrap="word")
         texto.pack(fill="both", expand=True, padx=16, pady=8)
-        texto.insert("1.0", atualizar_status_relatorio(salvo["texto"], texto_auto) if salvo.get("texto") else texto_auto)
+        texto.insert("1.0", salvo.get("texto", texto_auto))
         resultado = []
-        def salvar():
-            conteudo = texto.get("1.0", "end").strip()
-            if not conteudo:
+        def salvar(gerar_pdf=True):
+            conteudo = texto.get("1.0", "end-1c")
+            if not conteudo.strip():
                 messagebox.showwarning("Relatório vazio", "Preencha o texto do relatório.", parent=janela)
                 return False
             try:
@@ -1552,6 +1552,9 @@ class AdjudicacaoOrdemMixin:
                 with open(caminho + ".tmp", "w", encoding="utf-8") as arquivo:
                     json.dump(dados, arquivo, ensure_ascii=False, indent=2)
                 os.replace(caminho + ".tmp", caminho)
+                if gerar_pdf:
+                    gerar_pdf_relatorio_pesquisa(
+                        os.path.join(self._pasta_cotacao_atual, "RELATÓRIO DA PESQUISA.PDF"), conteudo)
                 return True
             except Exception as erro:
                 messagebox.showerror("Erro ao salvar relatório", str(erro), parent=janela)
@@ -1564,10 +1567,10 @@ class AdjudicacaoOrdemMixin:
                 base[0] = texto_auto
         def gerar():
             if salvar():
-                resultado.append(texto.get("1.0", "end").strip())
+                resultado.append(texto.get("1.0", "end-1c"))
                 janela.destroy()
         def fechar():
-            if salvar():
+            if salvar(gerar_pdf=False):
                 janela.destroy()
         ctk.CTkButton(rodape, text="SALVAR TEXTO", command=salvar, height=44).pack(side="left", padx=8)
         ctk.CTkButton(rodape, text="ATUALIZAR COM DADOS ATUAIS", command=atualizar, height=44).pack(side="left", padx=8)

@@ -254,6 +254,7 @@ class PersistenciaTelasTest(unittest.TestCase):
     def test_editor_relatorio_salva_reabre_e_atualiza_texto(self):
         import json
         import tempfile
+        import fitz
         from pathlib import Path
         class App(adj.AdjudicacaoOrdemMixin):
             def _caminho_arquivo_mapa_empresas(self, *args):
@@ -276,6 +277,8 @@ class PersistenciaTelasTest(unittest.TestCase):
                 self.assertEqual(caixa().get(), 'Texto automático')
                 caixa().insert('1.0', 'Texto editado com justificativa adicional')
                 clicar('SALVAR TEXTO')
+                with fitz.open(Path(pasta) / 'RELATÓRIO DA PESQUISA.PDF') as pdf:
+                    self.assertIn('Texto editado com justificativa adicional', pdf[0].get_text())
                 janela.kwargs['WM_DELETE_WINDOW']()
             Widget.criados = []
             app.exercitar = editar
@@ -288,12 +291,24 @@ class PersistenciaTelasTest(unittest.TestCase):
                 self.assertTrue(any('mudaram' in w.kwargs.get('text', '') for w in Widget.criados))
                 clicar('ATUALIZAR COM DADOS ATUAIS')
                 self.assertEqual(caixa().get(), 'Novos dados automáticos')
+                caixa().insert('1.0', '  Alteração final manual\n\nITEM 1.0 — texto mantido como digitado  ')
                 clicar('SALVAR E GERAR DOCUMENTOS')
             Widget.criados = []
             app.exercitar = reabrir
-            self.assertEqual(app._editar_relatorio_pesquisa('Novos dados automáticos'), 'Novos dados automáticos')
+            esperado = '  Alteração final manual\n\nITEM 1.0 — texto mantido como digitado  '
+            self.assertEqual(app._editar_relatorio_pesquisa('Novos dados automáticos'), esperado)
             salvo = json.loads(Path(app.arquivo).read_text())
             self.assertEqual(salvo['relatorio_pesquisa']['base'], 'Novos dados automáticos')
+            self.assertEqual(salvo['relatorio_pesquisa']['texto'], esperado)
+            with fitz.open(Path(pasta) / 'RELATÓRIO DA PESQUISA.PDF') as pdf:
+                self.assertIn('Alteração final manual', pdf[0].get_text())
+                self.assertNotIn('justificativa adicional', pdf[0].get_text())
+            def conferir_edicoes(janela):
+                self.assertEqual(caixa().get(), esperado)
+                janela.kwargs['WM_DELETE_WINDOW']()
+            app.exercitar = conferir_edicoes
+            Widget.criados = []
+            app._editar_relatorio_pesquisa('Outra versão automática')
 
     def test_fechar_reabrir_editar_limpar_sem_apagar_outra_tela(self):
         import json
