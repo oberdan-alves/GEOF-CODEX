@@ -18,6 +18,42 @@ def item(precos=(5650, 7500, 12990), pesquisas=(8000, 9213.5), numero=1):
 
 
 class PesquisasTest(unittest.TestCase):
+    def test_retornar_fornecedor_preserva_proposta_e_outras_retiradas(self):
+        for grupo in ('superior', 'inferior', 'analise'):
+            with self.subTest(grupo=grupo):
+                it = item()
+                it['propostas_originais'] = list(it['propostas'])
+                original = dict(it['propostas'][0])
+                it['precos_retirados'] = [dict(p, grupo=grupo, justificativa='Motivo')
+                                          for p in it['propostas'][:2]]
+                adj.aplicar_retiradas(it, ['F0', 'F1'])
+                it['retiradas_pendentes'] = [['analise', 'F0'], ['superior', 'F2']]
+                it['justificativas_retirada'] = {'F0': 'Motivo', 'F2': 'Outro motivo'}
+                self.assertTrue(adj.retornar_fornecedor(it, 'F0'))
+                self.assertEqual(it['propostas'][0], original)
+                self.assertEqual(it['fornecedores_retirados'], ['F1'])
+                self.assertEqual([p['fornecedor_chave'] for p in it['precos_retirados']], ['F1'])
+                self.assertEqual(it['retiradas_pendentes'], [['superior', 'F2']])
+                self.assertEqual(it['justificativas_retirada'], {'F2': 'Outro motivo'})
+                self.assertEqual(it['propostas'][it['vencedor_idx']]['fornecedor_chave'], 'F2')
+                self.assertEqual(it['pesquisas'], [8000, 9213.5])
+                ref = it['referencias']['minimo']
+                self.assertTrue(adj.retornar_fornecedor(it, 'F0'))
+                self.assertEqual(len(it['propostas']), 2)
+                self.assertEqual(it['referencias']['minimo'], ref)
+                reaberto = item()
+                adj.aplicar_retiradas(reaberto, it['fornecedores_retirados'])
+                self.assertEqual(reaberto['propostas'], it['propostas'])
+
+    def test_retornar_sem_propostas_classificadas(self):
+        it = item(precos=(10,), pesquisas=(None, None))
+        it['propostas_originais'] = list(it['propostas'])
+        adj.aplicar_retiradas(it, ['F0'])
+        self.assertTrue(adj.retornar_fornecedor(it, 'F0'))
+        self.assertEqual(it['vencedor_idx'], 0)
+        self.assertEqual(it['referencias']['minimo'], 10)
+        self.assertFalse(adj.retornar_fornecedor(it, 'inexistente'))
+
     def test_exportacao_pesquisas_incompletas_e_item_cancelado(self):
         for pesquisas in ([], [123.45], None):
             with self.subTest(pesquisas=pesquisas), tempfile.TemporaryDirectory() as pasta:

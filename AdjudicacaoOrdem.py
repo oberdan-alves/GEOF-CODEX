@@ -249,6 +249,30 @@ def aplicar_retiradas(item, fornecedores=(), pesquisas=()):
     recalcular_referencias(item)
 
 
+def retornar_fornecedor(item, chave):
+    """Reintegra somente a proposta solicitada e desfaz seus registros de retirada."""
+    def identificador(proposta):
+        return proposta.get("fornecedor_chave", proposta["fornecedor"])
+
+    original = next((p for p in item.get("propostas_originais", []) if identificador(p) == chave), None)
+    if original is None:
+        return False
+    propostas = list(item["propostas"])
+    idx = item.get("vencedor_idx")
+    escolhido = propostas[idx] if idx is not None and 0 <= idx < len(propostas) else None
+    if not any(identificador(p) == chave for p in propostas):
+        propostas.append(original)
+    propostas.sort(key=lambda p: p["unitario"])
+    item["propostas"] = propostas
+    item["fornecedores_retirados"] = [c for c in item.get("fornecedores_retirados", []) if c != chave]
+    item["precos_retirados"] = [p for p in item.get("precos_retirados", []) if identificador(p) != chave]
+    item["retiradas_pendentes"] = [r for r in item.get("retiradas_pendentes", []) if r[1] != chave]
+    item.setdefault("justificativas_retirada", {}).pop(chave, None)
+    item["vencedor_idx"] = next((i for i, p in enumerate(propostas) if p is escolhido), 0)
+    recalcular_referencias(item)
+    return True
+
+
 def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
     """Exporta o modelo A:M; limites em N ficam fora da área de impressão."""
     from openpyxl import Workbook
@@ -1639,6 +1663,34 @@ class AdjudicacaoOrdemMixin:
                 item_simulado = dict(atuais(), vencedor_idx=vencedor.get())
                 self._abrir_simulador_referencia(janela, item_simulado, precos, nomes())
 
+        def retornar(chave):
+            precos = ler()
+            if precos is None:
+                return
+            item = atuais()
+            item["pesquisas"] = precos
+            item["vencedor_idx"] = vencedor.get() if item["propostas"] else None
+            item["retiradas_pendentes"] = [[grupo, c] for grupo, c, var in selecoes if var.get()]
+            item["justificativas_retirada"] = {c: campo.get() for c, campo in justificativas.items()}
+            if not retornar_fornecedor(item, chave):
+                messagebox.showwarning("Retornar fornecedor", "A proposta original não foi localizada no cadastro deste item.", parent=janela)
+                return
+            vencedor.set(item["vencedor_idx"])
+            aplicado[0] = list(precos)
+            atualizar_revisao()
+            salvar_atual()
+
+        def mostrar_retirado(parent, proposta, largura):
+            linha = ctk.CTkFrame(parent, fg_color="transparent")
+            linha.pack(fill="x", padx=10, pady=5)
+            chave = proposta.get("fornecedor_chave", proposta["fornecedor"])
+            ctk.CTkButton(linha, text="RETORNAR", width=110, font=FONTE_BOTAO,
+                          command=lambda c=chave: retornar(c)).pack(side="left", padx=(0, 10))
+            ctk.CTkLabel(linha, text=f"{proposta['fornecedor']} — {formatar_pesquisa(proposta['unitario'])} — "
+                         f"{proposta.get('justificativa', 'Retirada por limite de 50%')}",
+                         font=fonte, text_color="#FF5555", wraplength=largura,
+                         justify="left").pack(side="left", fill="x", expand=True)
+
         def atualizar_revisao():
             item = atuais()
             for widget in revisao.winfo_children():
@@ -1683,8 +1735,7 @@ class AdjudicacaoOrdemMixin:
                     ctk.CTkLabel(validos, text="Nenhum fornecedor fora deste limite.", font=fonte).pack(anchor="w", padx=10)
                 historico = [p for p in item.get("precos_retirados", []) if p.get("grupo") == chave]
                 for proposta in historico:
-                    ctk.CTkLabel(removidos, text=f"{proposta['fornecedor']} — {formatar_pesquisa(proposta['unitario'])} — {proposta.get('justificativa', 'Retirada por limite de 50%')}",
-                                 font=fonte, text_color="#FF5555", wraplength=500, justify="left").pack(anchor="w", padx=10, pady=5)
+                    mostrar_retirado(removidos, proposta, 400)
                 if not historico:
                     ctk.CTkLabel(removidos, text="Nenhum fornecedor retirado.", font=fonte, text_color="#FF5555").pack(anchor="w", padx=10)
             for widget in rodape.winfo_children():
@@ -1716,9 +1767,7 @@ class AdjudicacaoOrdemMixin:
                 ctk.CTkLabel(revisao, text="FORNECEDORES RETIRADOS — ANÁLISE DA PROPOSTA",
                              font=destaque, text_color="#FF5555").pack(anchor="w", padx=10)
                 for proposta in historico_analise:
-                    ctk.CTkLabel(revisao, text=f"{proposta['fornecedor']} — {formatar_pesquisa(proposta['unitario'])} — {proposta['justificativa']}",
-                                 font=fonte, text_color="#FF5555", wraplength=1000,
-                                 justify="left").pack(anchor="w", padx=10, pady=5)
+                    mostrar_retirado(revisao, proposta, 900)
             if not item["propostas"]:
                 ctk.CTkLabel(rodape, text="Sem propostas classificadas — item sem vencedor.", font=fonte).pack(pady=10)
 

@@ -114,6 +114,15 @@ class TelaPesquisaItemTest(unittest.TestCase):
             historico = [w for w in widgets('Fornecedor 2') if w.kwargs.get('text_color') == '#FF5555']
             self.assertEqual(len(historico), 1)
             self.assertIn('12.990,00', historico[0].kwargs['text'])
+            clicar('RETORNAR')
+            self.assertEqual(len(primeiro['propostas']), 3)
+            self.assertEqual(primeiro['fornecedores_retirados'], [])
+            self.assertEqual(primeiro['precos_retirados'], [])
+            self.assertFalse(widgets('RETORNAR'))
+            self.salvar.assert_called()
+            retirar = widgets('RETIRAR VALOR — Fornecedor 2')[0]
+            retirar.kwargs['variable'].set(True)
+            clicar('RECALCULAR')
             observacao = [w for w in Widget.criados if not w.destruido and w.kwargs.get('height') == 90][0]
             observacao.insert('1.0', 'Preço retirado após análise.')
             self.assertEqual(len(widgets('colocado —')), 2)
@@ -198,7 +207,8 @@ class TelaPesquisaItemTest(unittest.TestCase):
                 self.assertEqual(primeiro['referencias']['media'], 100)
                 for sufixo, fornecedor in [('ACIMA', 'Fornecedor 2'), ('ABAIXO', 'Fornecedor 0')]:
                     titulo = next(w for w in vivos() if w.kwargs.get('text') == 'FORNECEDORES RETIRADOS - 50% ' + sufixo)
-                    registros = [w.kwargs.get('text', '') for w in titulo.parent.children]
+                    registros = [w.kwargs.get('text', '') for linha in titulo.parent.children
+                                 for w in [linha] + linha.children]
                     self.assertTrue(any(fornecedor in texto for texto in registros))
                     outro = 'Fornecedor 0' if sufixo == 'ACIMA' else 'Fornecedor 2'
                     self.assertFalse(any(outro in texto for texto in registros))
