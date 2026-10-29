@@ -768,7 +768,7 @@ class _AppCotacaoBase(ctk.CTk):
 
         self.title("Controle de Cotações - Tela de Entrada")
         self.geometry("1600x900")
-        centralizar_janela(self)
+        maximizar_janela(self)
         self.configure(fg_color=COR_FUNDO_APP)
 
         self.entradas_cotacao = []          # entries da matriz de cotação
