@@ -984,7 +984,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
 # ----------------------------------------------------------------------
 def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, fornecedor_info,
                             itens_vencidos, tipo_planilha, sei_texto, diretor_nome, diretor_matricula,
-                            contatos=None):
+                            contatos=None, observacoes=""):
     """Gera a ORDEM DE COMPRA de um fornecedor vencedor, com os itens que
     ele ganhou. Usa o mesmo esquema de cores da Adjudicação (APS=verde,
     HRG=azul/ciano, "...INV"=+amarelo), mas no Ordem a cor amarela fica na
@@ -1125,6 +1125,17 @@ def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, 
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
     ]))
     story.append(tabela_total)
+    if observacoes.strip():
+        estilo_observacoes = ParagraphStyle("ObservacoesOrdem", parent=estilo_corpo,
+            fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#8B0000"))
+        destaque = Table([[Paragraph("OBSERVAÇÕES:<br/>" + escape(observacoes).replace("\n", "<br/>"),
+                                     estilo_observacoes)]], colWidths=[largura_util], splitInRow=1)
+        destaque.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF2CC")),
+            ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#8B0000")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
+        story.append(destaque)
     story.append(Spacer(1, 10))
 
     # ---- dados para nota fiscal / entrega ----
@@ -1384,9 +1395,57 @@ class AdjudicacaoOrdemMixin:
             "sei_texto": sei_texto,
         }
 
+    def _perguntar_observacoes_ordem(self):
+        caminho = self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, self._codigo_cotacao_atual)
+        try:
+            with open(caminho, encoding="utf-8") as arquivo:
+                anterior = json.load(arquivo).get("observacoes_ordem", "")
+        except (OSError, ValueError) as erro:
+            messagebox.showerror("Erro ao ler observações", str(erro))
+            return None
+        janela = ctk.CTkToplevel(self)
+        janela.title("Observações da Ordem de Compra")
+        janela.geometry("850x440")
+        centralizar_janela(janela)
+        janela.grab_set()
+        ctk.CTkLabel(janela, text="Observações — opcionais, aplicadas às ordens desta cotação",
+                     font=("Segoe UI", 18, "bold"), wraplength=790).pack(padx=16, pady=(16, 8))
+        ctk.CTkLabel(janela, text="O texto será destacado após o TOTAL e antes dos dados para emissão de Nota Fiscal.",
+                     font=("Segoe UI", 15), wraplength=790).pack(padx=16, pady=(0, 8))
+        rodape = ctk.CTkFrame(janela, fg_color="transparent")
+        rodape.pack(side="bottom", fill="x", padx=16, pady=16)
+        campo = ctk.CTkTextbox(janela, font=("Segoe UI", 18), wrap="word")
+        campo.pack(fill="both", expand=True, padx=16, pady=8)
+        campo.insert("1.0", anterior)
+        resultado = []
+
+        def confirmar():
+            texto = campo.get("1.0", "end-1c")
+            try:
+                with open(caminho, encoding="utf-8") as arquivo:
+                    dados = json.load(arquivo)
+                dados["observacoes_ordem"] = texto
+                with open(caminho + ".tmp", "w", encoding="utf-8") as arquivo:
+                    json.dump(dados, arquivo, ensure_ascii=False, indent=2)
+                os.replace(caminho + ".tmp", caminho)
+            except (OSError, ValueError) as erro:
+                messagebox.showerror("Erro ao salvar observações", str(erro), parent=janela)
+                return
+            resultado.append(texto)
+            janela.destroy()
+
+        ctk.CTkButton(rodape, text="GERAR ORDENS", command=confirmar).pack(side="right", padx=8)
+        ctk.CTkButton(rodape, text="CANCELAR", command=janela.destroy).pack(side="right", padx=8)
+        janela.protocol("WM_DELETE_WINDOW", janela.destroy)
+        self.wait_window(janela)
+        return resultado[0] if resultado else None
+
     def acao_ordem(self):
         dados = self._montar_dados_ordens_ativas()
         if dados is None:
+            return
+        observacoes = self._perguntar_observacoes_ordem()
+        if observacoes is None:
             return
         ordens_por_fornecedor = dados["ordens_por_fornecedor"]
         fornecedores_completo = dados["fornecedores_completo"]
@@ -1410,7 +1469,8 @@ class AdjudicacaoOrdemMixin:
                     caminho_pdf, codigo_cotacao, ano, tr_numero, origem, info_fornecedor,
                     itens_vencidos, self._sufixo_planilha_atual, sei_texto,
                     diretor_nome, diretor_matricula,
-                    contatos=self.config_dados.get("contatos_ordem", CONTATOS_ORDEM_PADRAO))
+                    contatos=self.config_dados.get("contatos_ordem", CONTATOS_ORDEM_PADRAO),
+                    observacoes=observacoes)
                 caminho_jpg = converter_pdf_para_jpg(caminho_pdf, caminho_jpg_base)
                 arquivos_gerados.append((info_fornecedor.get("nome", texto_vencedor),
                                          caminho_pdf, caminho_jpg))
