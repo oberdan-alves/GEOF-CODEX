@@ -605,6 +605,15 @@ class MapaMixin:
         if self.janela_wizard is not None and self.janela_wizard.winfo_exists():
             self.janela_wizard.destroy()
 
+        try:
+            fornecedores = carregar_fornecedores(self._obter_caminho_arquivo())
+            self._cnpjs_fornecedores_wizard = {
+                f["nome_normalizado"]: f["cnpj"] for f in fornecedores
+            }
+        except Exception as erro:
+            self._cnpjs_fornecedores_wizard = {}
+            messagebox.showwarning("Aviso", f"Não foi possível consultar os CNPJs dos fornecedores:\n{erro}")
+
         janela = ctk.CTkToplevel(self)
         janela.title("Cadastro de Propostas por Fornecedor")
         janela.configure(fg_color=COR_FUNDO_APP)
@@ -651,8 +660,10 @@ class MapaMixin:
         else:
             dados_existentes = self.mapa_fornecedores.get(nome)
 
+        cnpj = getattr(self, "_cnpjs_fornecedores_wizard", {}).get(normalizar_texto(nome))
         self.wizard_cabecalho.configure(
-            text=f"Fornecedor {self.indice_fornecedor_atual + 1} de {total_fornecedores} — {nome}")
+            text=f"Fornecedor {self.indice_fornecedor_atual + 1} de {total_fornecedores} — "
+                 f"{nome} — CNPJ: {cnpj or 'Não informado'}")
 
         topo = ctk.CTkFrame(self.wizard_conteudo, fg_color="transparent")
         topo.pack(fill="x", padx=14, pady=(12, 6))
