@@ -72,7 +72,7 @@ from GeradorCotacao import (
 PUBLICACOES_DISPONIVEIS = [f"{n}ª PUBLICAÇÃO" for n in range(1, 11)]
 
 # ----------------------------------------------------------------------
-# TEXTO PADRÃO DO CORPO DO E-MAIL (itens 3 a 13.5 — igual para todas as
+# TEXTO PADRÃO DO CORPO DO E-MAIL (itens 3 a 14 — igual para todas as
 # cotações/publicações; só os itens 1, 2 e a lista de cotações variam)
 # ----------------------------------------------------------------------
 TEXTO_CORPO_BASE = [
@@ -97,7 +97,7 @@ TEXTO_CORPO_BASE = [
     "    12.4 - Prazo de entrega do item;",
     "    12.5 - Especificações do item idênticas ao solicitado no Pedido de Cotação;",
     "    12.6 - O valor do frete, imposto e taxas inclusos no preço unitário do item.",
-    "    12.7 - O preço do medicamento deve estar abaixo do Preço Fábrica da CMED.",
+    "    12.7 - Medicamento informar o GGREM e Nº Anvisa. O preço deve estar abaixo do limite da CMED.",
     "    12.8 - Dados bancários para pagamento. Nota Fiscal de empresas do DF, acima de "
     "R$ 5.000,00 somente BRB.",
     "13 - Pedimos que as propostas sejam acompanhadas das Certidões Negativas válidas, "
@@ -110,6 +110,10 @@ TEXTO_CORPO_BASE = [
     "    13.4 - Certidão Negativa de Débitos Trabalhistas do TST - Lei nº 12.440/2011;",
     "    13.5 - Certidão Negativa Correcional emitida pela CGU - Art. 91, § 4º da Lei "
     "14.133/2021",
+    "    13.6 - Para venda de MEDICAMENTOS apresentar AFE para Distribuição de Medicamentos - "
+    "RDC 430/2020 ANVISA e Alvará / Licença Sanitária.",
+    "14- O contratado deverá manter, durante toda a execução do contrato, as condições exigidas para a habilitação, "
+    "Lei 14.133/2021 art. 92, XVI;",
 ]
 
 # ----------------------------------------------------------------------
@@ -595,7 +599,8 @@ class EmailMixin:
         assunto, corpo, indice_linha_prazo = self._montar_texto_email_cotacao(
             codigos=[g["codigo"] for g in grupos_cotacao], ano=ano, grupos_cotacao=grupos_cotacao,
             publicacao=dados["publicacao"], horas=dados["horas"],
-            data_recebimento_texto=data_recebimento_texto, exclusividade=dados["exclusividade"])
+            data_recebimento_texto=data_recebimento_texto, exclusividade=dados["exclusividade"],
+            texto_corpo=dados["texto_corpo"])
 
         self._mostrar_email_gerado(assunto, corpo, indice_linha_prazo, titulo="E-mail Cotação")
 
@@ -606,37 +611,47 @@ class EmailMixin:
         janela = ctk.CTkToplevel(self)
         janela.title("Dados do E-mail de Cotação")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("520x460")
+        janela.geometry("900x900")
         centralizar_janela(janela)
         janela.grab_set()
+        rodape = ctk.CTkFrame(janela, fg_color="transparent")
+        rodape.pack(side="bottom", fill="x")
+        conteudo = ctk.CTkScrollableFrame(janela)
+        conteudo.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(janela, text="PUBLICAÇÃO:", font=FONTE_SECAO, text_color=COR_TEXTO
+        ctk.CTkLabel(conteudo, text="PUBLICAÇÃO:", font=FONTE_SECAO, text_color=COR_TEXTO
                      ).pack(anchor="w", padx=16, pady=(16, 2))
         var_publicacao = tk.StringVar(value=PUBLICACOES_DISPONIVEIS[0])
-        ctk.CTkOptionMenu(janela, values=PUBLICACOES_DISPONIVEIS, variable=var_publicacao,
+        ctk.CTkOptionMenu(conteudo, values=PUBLICACOES_DISPONIVEIS, variable=var_publicacao,
                           font=FONTE_ENTRY, dropdown_font=FONTE_ENTRY, height=32
                           ).pack(fill="x", padx=16, pady=(0, 10))
 
-        ctk.CTkLabel(janela, text="PRAZO para recebimento (dias úteis):", font=FONTE_SECAO,
+        ctk.CTkLabel(conteudo, text="PRAZO para recebimento (dias úteis):", font=FONTE_SECAO,
                      text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(0, 2))
-        entry_prazo = ctk.CTkEntry(janela, font=FONTE_ENTRY, height=32)
+        entry_prazo = ctk.CTkEntry(conteudo, font=FONTE_ENTRY, height=32)
         entry_prazo.insert(0, "3")
         entry_prazo.pack(fill="x", padx=16, pady=(0, 10))
         entry_prazo.bind("<KeyRelease>", lambda e: self._aplicar_mascara_generica(
             entry_prazo, lambda t: formatar_apenas_digitos(t, 2)))
 
-        ctk.CTkLabel(janela, text="HORAS de recebimento (HH:MM):", font=FONTE_SECAO,
+        ctk.CTkLabel(conteudo, text="HORAS de recebimento (HH:MM):", font=FONTE_SECAO,
                      text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(0, 2))
-        entry_horas = ctk.CTkEntry(janela, font=FONTE_ENTRY, height=32, placeholder_text="18:00")
+        entry_horas = ctk.CTkEntry(conteudo, font=FONTE_ENTRY, height=32, placeholder_text="18:00")
         entry_horas.pack(fill="x", padx=16, pady=(0, 10))
         entry_horas.bind("<KeyRelease>", lambda e: self._aplicar_mascara_generica(
             entry_horas, formatar_hora))
 
         var_exclusividade = tk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            janela, text="Cotação com EXCLUSIVIDADE (inclui texto sobre Carta de Exclusividade)",
+            conteudo, text="Cotação com EXCLUSIVIDADE (inclui texto sobre Carta de Exclusividade)",
             variable=var_exclusividade, font=FONTE_TABELA, text_color=COR_TEXTO
         ).pack(anchor="w", padx=16, pady=(6, 10))
+
+        ctk.CTkLabel(conteudo, text="Texto do e-mail — itens 3 a 14 (editável):", font=FONTE_SECAO,
+                     text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(6, 2))
+        entry_corpo = ctk.CTkTextbox(conteudo, font=FONTE_ENTRY, height=300, wrap="word")
+        entry_corpo.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        entry_corpo.insert("1.0", "\n".join(TEXTO_CORPO_BASE))
 
         resultado = {"valor": None}
 
@@ -658,10 +673,11 @@ class EmailMixin:
                 "prazo_dias": prazo_valor,
                 "horas": horas_texto,
                 "exclusividade": var_exclusividade.get(),
+                "texto_corpo": entry_corpo.get("1.0", "end-1c"),
             }
             janela.destroy()
 
-        ctk.CTkButton(janela, text="Gerar e-mail", font=FONTE_BOTAO, height=36,
+        ctk.CTkButton(rodape, text="Gerar e-mail", font=FONTE_BOTAO, height=36,
                       fg_color=COR_DESTAQUE, command=confirmar).pack(pady=(10, 16))
 
         janela.protocol("WM_DELETE_WINDOW", janela.destroy)
@@ -669,7 +685,7 @@ class EmailMixin:
         return resultado["valor"]
 
     def _montar_texto_email_cotacao(self, codigos, ano, grupos_cotacao, publicacao, horas,
-                                     data_recebimento_texto, exclusividade):
+                                     data_recebimento_texto, exclusividade, texto_corpo=None):
         """Monta (ASSUNTO, CORPO, indice_linha_prazo). 'indice_linha_prazo'
         é a posição (0-based) da linha do item 2 dentro de CORPO, usada só
         para destacar essa linha visualmente na tela de prévia."""
@@ -700,7 +716,7 @@ class EmailMixin:
             f"{data_recebimento_texto}")
         linhas.append("")
 
-        linhas.extend(TEXTO_CORPO_BASE)
+        linhas.extend(TEXTO_CORPO_BASE if texto_corpo is None else texto_corpo.splitlines())
 
         if exclusividade:
             linhas.append("")
