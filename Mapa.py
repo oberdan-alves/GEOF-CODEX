@@ -27,6 +27,7 @@ Mapa Comparativo e as Ordens de Compra.
 import os
 from caminhos import normalizar_caminho
 import json
+from datetime import date
 from xml.sax.saxutils import escape
 from decimal import Decimal, ROUND_HALF_UP
 from math import isfinite
@@ -44,6 +45,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from GeradorCotacao import (
     centralizar_janela,
+    maximizar_janela,
     COR_FUNDO_APP, COR_CARD, COR_TEXTO, COR_TEXTO_SEC, COR_DESTAQUE,
     FONTE_ENTRY, FONTE_SECAO, FONTE_BOTAO, FONTE_TABELA,
     normalizar_texto, extrair_nome_codigo_fornecedor, corrigir_acentuacao,
@@ -508,12 +510,14 @@ class MapaMixin:
 
         # Tenta carregar cadastro já salvo anteriormente (para continuar de onde parou)
         self.mapa_fornecedores = {}
+        self._data_proposta_padrao = ""
         caminho_json = self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, codigo_cotacao)
         if os.path.exists(caminho_json):
             try:
                 with open(caminho_json, "r", encoding="utf-8") as f:
                     dados_salvos = json.load(f)
                 self.mapa_fornecedores = dados_salvos.get("fornecedores", {})
+                self._data_proposta_padrao = dados_salvos.get("data_proposta_padrao", "")
             except Exception as e:
                 messagebox.showwarning("Aviso", f"Não foi possível ler o cadastro salvo:\n{e}")
 
@@ -542,6 +546,7 @@ class MapaMixin:
             return
 
         self.mapa_fornecedores = dados_salvos.get("fornecedores", {})
+        self._data_proposta_padrao = dados_salvos.get("data_proposta_padrao", "")
         if not self.mapa_fornecedores:
             messagebox.showwarning("Atenção", "O arquivo salvo não contém fornecedores.")
             return
@@ -605,7 +610,7 @@ class MapaMixin:
         janela.configure(fg_color=COR_FUNDO_APP)
         janela.geometry(f"{min(1560, janela.winfo_screenwidth() - 40)}x"
                         f"{min(920, janela.winfo_screenheight() - 80)}")
-        centralizar_janela(janela)
+        maximizar_janela(janela)
         janela.grab_set()
         self.janela_wizard = janela
 
@@ -657,8 +662,9 @@ class MapaMixin:
                                               placeholder_text="DD/MM/AAAA")
         self.wizard_entry_data.pack(side="left")
         self.wizard_entry_data.bind("<KeyRelease>", self._on_data_proposta_digitada)
-        if dados_existentes:
-            self.wizard_entry_data.insert(0, dados_existentes.get("data_proposta", ""))
+        data_inicial = (dados_existentes or {}).get("data_proposta") or (
+            getattr(self, "_data_proposta_padrao", "") or date.today().strftime("%d/%m/%Y"))
+        self.wizard_entry_data.insert(0, data_inicial)
 
         self._historico_repeticao = []
         ctk.CTkButton(topo, text="Repetir dados do primeiro item", font=("Segoe UI", 15, "bold"),
@@ -1010,6 +1016,7 @@ class MapaMixin:
         nome = self._fornecedor_atual_nome()
         dados_finais = dict(self._dados_form_atual)
         dados_finais.pop("_fornecedor", None)
+        self._data_proposta_padrao = dados_finais["data_proposta"]
         self.mapa_fornecedores[nome] = dados_finais
         self._dados_form_atual = None
         self._salvar_mapa_em_arquivo()
@@ -1040,6 +1047,7 @@ class MapaMixin:
                 "cotacao": self._codigo_cotacao_atual,
                 "ano": self._ano_atual_wizard,
                 "fornecedores": self.mapa_fornecedores,
+                "data_proposta_padrao": getattr(self, "_data_proposta_padrao", ""),
             })
             temporario = caminho_json + ".tmp"
             with open(temporario, "w", encoding="utf-8") as f:
