@@ -30,7 +30,9 @@ Dependências: customtkinter, openpyxl, pandas, reportlab, pillow, pymupdf
 """
 
 import os
-from caminhos import normalizar_caminho
+from caminhos import (normalizar_caminho, configurar_pasta_compartilhada, caminho_configuracao,
+                      caminho_recurso, salvar_json_compartilhado, pasta_dados_compartilhados,
+                      desativar_pasta_compartilhada)
 import re
 import json
 import glob
@@ -76,11 +78,11 @@ QTD_MAX_COTACOES = 10
 # Aceita ".009/2025" ou "501/2026"
 REGEX_COTACAO = re.compile(r"\.?\s*(\d+)\s*/\s*(\d+)")
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_padrao.json")
-FERIADOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feriados.json")
+CONFIG_FILE = str(caminho_configuracao("config_padrao.json"))
+FERIADOS_FILE = str(caminho_configuracao("feriados.json"))
 
-# Pasta de imagens fixas do sistema (brasão etc.). Fica ao lado deste .py.
-CAMINHO_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+# Recursos iniciais do pacote; após selecionar GEOF, passam à pasta compartilhada.
+CAMINHO_ASSETS = str(caminho_recurso("assets"))
 CAMINHO_LOGO_GDF = os.path.join(CAMINHO_ASSETS, "brasao_gdf.png")
 
 # ----------------------------------------------------------------------
@@ -152,6 +154,16 @@ FONTE_TABELA  = ("Segoe UI", 11)
 # ----------------------------------------------------------------------
 # PERSISTÊNCIA DE VARIÁVEIS CONSTANTES (defaults salvos em disco)
 # ----------------------------------------------------------------------
+def definir_armazenamento_compartilhado(pasta_geof):
+    global CONFIG_FILE, FERIADOS_FILE, CAMINHO_ASSETS, CAMINHO_LOGO_GDF
+    pasta = pasta_dados_compartilhados(pasta_geof)
+    CONFIG_FILE = os.path.join(pasta, "config_padrao.json")
+    FERIADOS_FILE = os.path.join(pasta, "feriados.json")
+    CAMINHO_ASSETS = os.path.join(pasta, "assets")
+    CAMINHO_LOGO_GDF = os.path.join(CAMINHO_ASSETS, "brasao_gdf.png")
+    return configurar_pasta_compartilhada(pasta_geof)
+
+
 def carregar_config():
     padrao = {
         "pasta_geof": "",
@@ -182,10 +194,10 @@ def carregar_config():
 
 def salvar_config(config: dict):
     try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
+        definir_armazenamento_compartilhado(config.get("pasta_geof") or config.get("pasta_trabalho") or "")
+        salvar_json_compartilhado("config_padrao.json", config)
     except Exception as e:
-        print(f"Erro ao salvar config: {e}")
+        messagebox.showerror("Erro ao salvar configurações compartilhadas", str(e))
 
 
 # ----------------------------------------------------------------------
@@ -212,10 +224,9 @@ def carregar_feriados():
 
 def salvar_feriados(lista_feriados):
     try:
-        with open(FERIADOS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"feriados": lista_feriados}, f, ensure_ascii=False, indent=2)
+        salvar_json_compartilhado("feriados.json", {"feriados": lista_feriados})
     except Exception as e:
-        print(f"Erro ao salvar feriados: {e}")
+        messagebox.showerror("Erro ao salvar feriados compartilhados", str(e))
 
 
 def obter_datas_feriados(lista_feriados):
@@ -744,6 +755,16 @@ class _AppCotacaoBase(ctk.CTk):
         ctk.set_default_color_theme("dark-blue")
 
         self.config_dados = carregar_config()
+        self._pasta_dados_geof = ""
+        pasta_inicial = normalizar_caminho(self.config_dados.get("pasta_geof") or self.config_dados.get("pasta_trabalho") or "")
+        if pasta_inicial:
+            try:
+                definir_armazenamento_compartilhado(pasta_inicial)
+                self.config_dados = carregar_config()
+                self.config_dados["pasta_geof"] = pasta_inicial
+                self._pasta_dados_geof = pasta_inicial
+            except OSError as erro:
+                messagebox.showerror("Pasta compartilhada indisponível", str(erro), parent=self)
 
         self.title("Controle de Cotações - Tela de Entrada")
         self.geometry("1600x900")
@@ -768,6 +789,7 @@ class _AppCotacaoBase(ctk.CTk):
 
         self._montar_layout()
         self._preencher_defaults()
+        self._sincronizar_pasta_compartilhada()
 
     # ------------------------------------------------------------------
     # LAYOUT GERAL
@@ -916,9 +938,12 @@ class _AppCotacaoBase(ctk.CTk):
             linha_pasta, font=FONTE_ENTRY, height=32,
             placeholder_text=r"Cole aqui o caminho até ...\GEOF")
         self.entry_pasta_geof.grid(row=0, column=0, sticky="ew")
-        self.entry_pasta_geof.bind("<FocusOut>", lambda ev: self._atualizar_cores_etapas())
+        self.entry_pasta_geof.bind("<FocusOut>", lambda ev: self._sincronizar_pasta_compartilhada())
         ctk.CTkButton(linha_pasta, text="Procurar...", width=110, height=32,
                       font=FONTE_BOTAO, command=self._procurar_pasta_geof).grid(row=0, column=1, padx=(6, 0))
+        self.label_pasta_dados = ctk.CTkLabel(col, text="Dados compartilhados: selecione a pasta GEOF.",
+                                            font=("Segoe UI", 11), wraplength=620, anchor="w")
+        self.label_pasta_dados.pack(fill="x", padx=16, pady=(2, 4))
 
         # Campo interno (não exibido na tela): guarda o caminho do arquivo
         # .xlsx localizado dentro de GEOF\TIPO\PDPAS ANO\MATRIX.
@@ -1360,7 +1385,35 @@ class _AppCotacaoBase(ctk.CTk):
         if caminho:
             self.entry_pasta_geof.delete(0, "end")
             self.entry_pasta_geof.insert(0, caminho)
-            self._atualizar_cores_etapas()
+            self._sincronizar_pasta_compartilhada()
+
+    def _sincronizar_pasta_compartilhada(self):
+        pasta = normalizar_caminho(self.entry_pasta_geof.get())
+        if not pasta:
+            desativar_pasta_compartilhada()
+            self.config_dados["pasta_geof"] = ""
+            self._pasta_dados_geof = ""
+            self.label_pasta_dados.configure(text="Dados compartilhados: selecione a pasta GEOF.")
+            return
+        try:
+            destino = definir_armazenamento_compartilhado(pasta)
+        except OSError as erro:
+            self.config_dados["pasta_geof"] = pasta
+            messagebox.showerror("Pasta compartilhada indisponível", str(erro), parent=self)
+            return
+        self.label_pasta_dados.configure(text=f"Dados compartilhados: {destino}")
+        if pasta != self._pasta_dados_geof:
+            self._pasta_dados_geof = pasta
+            self.config_dados = carregar_config()
+            self.config_dados["pasta_geof"] = pasta
+            for campo in (self.entry_pasta_geof, self.entry_ano, self.entry_da_nome, self.entry_da_matricula,
+                          self.entry_super_nome, self.entry_super_matricula):
+                campo.delete(0, "end")
+            self._preencher_defaults()
+            self.combo_operador.configure(values=self.config_dados["operadores"] + [OPCAO_NOVO_OPERADOR])
+            self.var_operador.set(self.config_dados["ultimo_operador"])
+            salvar_config(self.config_dados)
+        self._atualizar_cores_etapas()
 
     def _aplicar_mascara_matricula(self, entry):
         texto = entry.get()
