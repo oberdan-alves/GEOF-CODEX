@@ -471,7 +471,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         texto_contato = f"11 - {label_item11} {escape(contato_texto)}"
         texto_cargo = f"{template_nucleo['cargo']}{template_nucleo.get('extra', '')}"
         estilo_contato = estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic
-        if is_inv and not is_hrg:
+        if is_inv:
             # Um só parágrafo aproveita o espaço restante após o contato.
             story.append(Paragraph(texto_contato + (" — " + escape(texto_cargo) if texto_cargo else ""), estilo_contato))
         else:
@@ -528,7 +528,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     if not is_inv and origem_chave != "NECFM":
         story.append(Paragraph("13.6 - Para venda de <b>MEDICAMENTOS</b> apresentar <b>AFE</b> para Distribuição de "
                                "Medicamentos - RDC 430/2020 ANVISA e <b>Alvará / Licença Sanitária.</b>", estilo_corpo))
-    if (not is_inv and origem_chave != "NECFM") or (is_inv and not is_hrg):
+    if is_inv or origem_chave != "NECFM":
         story.append(Paragraph("14- O contratado deverá manter, durante toda a execução do contrato, as condições exigidas "
                                "para a habilitação, Lei 14.133/2021 art. 92, XVI;", estilo_corpo))
     story.append(Spacer(1, 4))

@@ -48,6 +48,7 @@ class ModelosPedidoTest(unittest.TestCase):
                         self.assertNotIn('PDPAS/HRG - GEOF', texto)
                     if 'INV' in tipo:
                         self.assertIn('12.7 - O preço do medicamento deve estar abaixo do Preço Fábrica da CMED.', texto)
+                        self.assertIn('14- O contratado deverá manter', texto)
                     else:
                         self.assertIn('12.7 - Medicamento informar o GGREM e Nº Anvisa.', texto)
                         if origem != 'NECFM':
@@ -105,13 +106,14 @@ class ModelosPedidoTest(unittest.TestCase):
             with self.gerar(pasta, 'APS', 'NFH', contatos=dict(CONTATOS_ORDEM_PADRAO, NFL='')) as pdf:
                 self.assertNotIn(CONTATOS_ORDEM_PADRAO['NFL'], ' '.join(pdf[0].get_text().split()))
 
-    def test_cargo_aps_investimento_aproveita_linha_do_contato(self):
-        contatos = dict(CONTATOS_ORDEM_PADRAO, NPDOC_APSINV='ANA')
-        with tempfile.TemporaryDirectory() as pasta, self.gerar(pasta, 'APS INV', 'NPDOC', contatos=contatos) as pdf:
-            nome = pdf[0].search_for('ANA')[0]
-            cargo = pdf[0].search_for('Chefe do Núcleo')[0]
-            self.assertAlmostEqual(nome.y0, cargo.y0, delta=1)
-            self.assertGreater(cargo.x0, nome.x0)
+    def test_cargo_investimento_aproveita_linha_do_contato(self):
+        contatos = dict(CONTATOS_ORDEM_PADRAO, NPDOC_APSINV='ANA', NPDOC_HRGINV='ANA')
+        for tipo in ('APS INV', 'HRG INV'):
+            with self.subTest(tipo=tipo), tempfile.TemporaryDirectory() as pasta, self.gerar(pasta, tipo, 'NPDOC', contatos=contatos) as pdf:
+                nome = pdf[0].search_for('ANA')[0]
+                cargo = pdf[0].search_for('Chefe do Núcleo')[0]
+                self.assertAlmostEqual(nome.y0, cargo.y0, delta=1)
+                self.assertGreater(cargo.x0, nome.x0)
 
 
 if __name__ == '__main__':
