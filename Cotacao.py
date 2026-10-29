@@ -72,7 +72,7 @@ NUCLEO_TEMPLATES = {
         "horario": "de segunda a QUINTA de 08:00 as 11:00 e 14:00 as 17:00",
         "chave_contato": "NPDOC_HRGINV",
         "cargo": "Chefe do Núcleo de Patrimônio e Documentação Administrativa",
-        "extra": " e sala 3449 7083",
+        "extra": "",
         "label_item11": "Informações Técnicas e responsável pelo RECEBIMENTO E ATESTO:",
     },
     ("NPDOC", "APS"): {
@@ -89,22 +89,21 @@ NUCLEO_TEMPLATES = {
         "horario": "de 08h às 12h e de 14h às 17h, de segunda a sexta-feira",
         "chave_contato": "NUAL_HRG",
         "cargo": "Chefe do Núcleo de Almoxarifado/HRG",
-        "contato_modelo": "WEILLER MACHADO NOBRE ALVES, matrícula 1.710.888-8",
-        "extra": " – (61) 3449-7092/7093/7094 61 9 8163 2656", "destaque_item10": "base",
+        "extra": "", "destaque_item10": "base",
     },
     ("NUAL", "APS"): {
         "nome_nucleo": "ALMOXARIFADO da Gerência de Apoio Operacional da Atenção Primária SUL",
         "sigla": "NUAL/GAOAPS", "setor_sigla": "NUAL/GAOAPS-Sul",
         "horario": "de 08h às 12h e de 13h às 16h, de segunda a sexta-feira",
         "chave_contato": "NUAL_APS",
-        "cargo": "Chefe do Núcleo de Almoxarifado/GAOAPS-SUL – (61) 98138-6973.",
+        "cargo": "Chefe do Núcleo de Almoxarifado/GAOAPS-SUL",
         "extra": "",
     },
     ("NECFM", "APS"): {
         "nome_nucleo": "ENGENHARIA", "sigla": "NECFM/GAOESP", "setor_sigla": "NECFM/GAOESP-APS",
         "horario": "de 08h às 12h e de 13h às 16h, de segunda a sexta-feira",
         "chave_contato": "NECFM",
-        "cargo": "", "extra": "(61) 9639-0162.", "destaque_vermelho": True, "modelo_entrega": "agendar",
+        "cargo": "", "extra": "", "destaque_vermelho": True, "modelo_entrega": "agendar",
         "destaque_item10": "base",
         "label_item11": "Informações, agendamentos, Marcação de Visitas técnicas e "
                         "responsável pelo Atesto para pagamento:",
@@ -114,9 +113,9 @@ NUCLEO_TEMPLATES = {
         # frase "agendar", só o texto padrão de entrega
         "nome_nucleo": "Engenharia Clínica", "sigla": "NECFM/HRG",
         "horario": "de 08h às 12h e de 14h às 17h, de segunda a sexta-feira",
-        "chave_contato": "NECFM",
+        "chave_contato": "NECFM_HRG",
         "cargo": "Chefe do Núcleo de Engenharia Clínica e Física Médica/HRG NECFM (MEZANINO ACIMA DO PAI)",
-        "extra": "– (61) 9639-0162.", "destaque_vermelho": True,
+        "extra": "", "destaque_vermelho": True,
         "label_item11": "Informações, agendamentos, Marcação de Visitas técnicas e "
                         "responsável pelo Atesto para pagamento:",
     },
@@ -124,8 +123,7 @@ NUCLEO_TEMPLATES = {
         "nome_nucleo": "FARMÁCIA da Gerência de Apoio Operacional da Atenção Primária SUL",
         "sigla": "NLF/GAOAPS", "setor_sigla": "NLF/GAOAPS-SUL",
         "horario": "de 08h às 12h e de 13h às 16h, de segunda a sexta-feira",
-        "chave_contato": "NFL", "cargo": "Chefe do Núcleo de Logística Farmacêutica/GAOAPS-SUL – (61) 98366-0250.",
-        "contato_modelo": "RAFAEL DE SOUZA MARTINEZ, matrícula 1.709.374-0",
+        "chave_contato": "NFL", "cargo": "Chefe do Núcleo de Logística Farmacêutica/GAOAPS-SUL",
         "extra": "", "destaque_item10": "base",
     },
     ("NFH", "HRG"): {
@@ -133,7 +131,7 @@ NUCLEO_TEMPLATES = {
         "nome_nucleo": "Farmácia", "sigla": "NFH/HRG",
         "horario": "de 08h às 12h e de 14h às 17h, de segunda a sexta-feira",
         "chave_contato": "NFH",
-        "cargo": "Chefe do Nucleo de Farmácia/HRG – (61) 3449-7070, 7071.",
+        "cargo": "Chefe do Nucleo de Farmácia/HRG",
         "extra": "", "destaque_item10": "base",
     },
 }
@@ -450,9 +448,6 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     if template_nucleo:
         contato_texto = contatos.get(template_nucleo["chave_contato"], "")
-        if template_nucleo.get("contato_modelo") and (
-                not contato_texto or contato_texto == CONTATOS_ORDEM_PADRAO.get(template_nucleo["chave_contato"])):
-            contato_texto = template_nucleo["contato_modelo"]
         texto_item10 = (
             f"10 - Entrega/Recolhimento agendar no Núcleo de {template_nucleo['nome_nucleo']} - "
             f"({template_nucleo['sigla']}) {template_nucleo['horario']}."

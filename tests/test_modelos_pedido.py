@@ -79,6 +79,30 @@ class ModelosPedidoTest(unittest.TestCase):
             self.assertIn('C15', texto)
             self.assertIn('14- O contratado deverá manter', texto)
 
+    def test_item11_usa_contato_configurado_por_setor_e_planilha(self):
+        modelos = [('APS', 'NFL', 'NFL'), ('APS', 'NFH', 'NFL'),
+                   ('APS', 'NUAL', 'NUAL_APS'), ('APS', 'NECFM', 'NECFM'),
+                   ('APS INV', 'NPDOC', 'NPDOC_APSINV'),
+                   ('HRG', 'NFH', 'NFH'), ('HRG', 'NUAL', 'NUAL_HRG'),
+                   ('HRG', 'NECFM', 'NECFM_HRG'), ('HRG INV', 'NPDOC', 'NPDOC_HRGINV')]
+        contatos = {chave: f'CONTATO CONFIGURADO {i} - (61) 90000-00{i:02}'
+                    for i, chave in enumerate(CONTATOS_ORDEM_PADRAO)}
+        with tempfile.TemporaryDirectory() as pasta:
+            for tipo, origem, chave in modelos:
+                with self.subTest(tipo=tipo, origem=origem), self.gerar(pasta, tipo, origem, contatos=contatos) as pdf:
+                    texto = ' '.join(pdf[0].get_text().split())
+                    self.assertIn(contatos[chave], texto)
+                    for outra, valor in contatos.items():
+                        if outra != chave:
+                            self.assertNotIn(valor, texto)
+            with self.gerar(pasta, 'APS', 'NFH') as pdf:
+                texto = ' '.join(pdf[0].get_text().split())
+                self.assertIn(CONTATOS_ORDEM_PADRAO['NFL'], texto)
+                self.assertNotIn('RAFAEL DE SOUZA MARTINEZ', texto)
+                self.assertNotIn('98366-0250', texto)
+            with self.gerar(pasta, 'APS', 'NFH', contatos=dict(CONTATOS_ORDEM_PADRAO, NFL='')) as pdf:
+                self.assertNotIn(CONTATOS_ORDEM_PADRAO['NFL'], ' '.join(pdf[0].get_text().split()))
+
 
 if __name__ == '__main__':
     unittest.main()
