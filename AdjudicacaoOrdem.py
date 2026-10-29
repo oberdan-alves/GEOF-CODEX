@@ -55,6 +55,8 @@ from GeradorCotacao import (
 from Mapa import carregar_fornecedores_completo, formatar_quantidade_proposta
 
 TITULOS_PESQUISA_PADRAO = ("Média¹ Mapa GDF", "Mediana² Painel Federal")
+OPCOES_PUBLICACAO = [f"{i}ª PUBLICAÇÃO" for i in range(1, 6)]
+TEXTO_PUBLICACAO_PADRAO = "A Publicação no Diário Oficial do DF será realizada pelo SEI 00060-00308906/2026-01"
 STATUS_ITEM = {
     "DESERTA": "Não compareceu nenhum interessado: nenhum fornecedor apresentou proposta ou manifestou interesse.",
     "FRACASSADA": "Houve participantes, mas nenhuma proposta ou licitante foi considerado válido: propostas desclassificadas por preços incompatíveis ou participantes inabilitados por não cumprirem os requisitos do edital.",
@@ -336,6 +338,16 @@ def recalcular_referencias(item):
                                inferior=referencia * 0.5 if valores else None)
 
 
+def criterio_referencia(item):
+    ref = item.get("referencias") or {}
+    media, mediana = ref.get("media"), ref.get("mediana")
+    if media is None or mediana is None:
+        return ""
+    if media == mediana:
+        return "MÉDIA = MEDIANA"
+    return "MÉDIA" if media < mediana else "MEDIANA"
+
+
 def simular_referencia(valores, indice_negociacao):
     """Calcula um cenário independente; None representa um valor excluído.
 
@@ -448,7 +460,7 @@ def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
                          (2, "SECRETARIA DE ESTADO DE SAÚDE"),
                          (3, "PROGRAMA DE DESCENTRALIZAÇÃO PROGRESSIVA DE AÇÕES DE SAÚDE — PDPAS"),
                          (4, "SOLICITAÇÃO DE ADJUDICAÇÃO PARA O PEDIDO DE COTAÇÃO PDPAS"),
-                         (5, f"{codigo}/{ano}"), (6, dados.get('objeto', '')),
+                         (5, f"{codigo}/{ano} – {dados.get('publicacao_rotulo', OPCOES_PUBLICACAO[0])}"), (6, dados.get('objeto', '')),
                          (7, f"MAPA COMPARATIVO {codigo}/{ano}")]:
         ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=13)
         ws.cell(linha, 1, texto)
@@ -508,7 +520,8 @@ def gerar_excel_mapa_comparativo(caminho, codigo, ano, itens, dados):
         ws.cell(r+2, 15, '50% ACIMA')
         ws.cell(r+3, 15, '50% ABAIXO')
         ws.merge_cells(start_row=r+3, start_column=11, end_row=r+3, end_column=12)
-        ws.cell(r+3, 11, 'Preço de referência')
+        ws.cell(r+3, 11, f'=IF(COUNT(M{r},M{r+2})=0,"Preço de referência","Preço de referência — "&'
+                        f'IF(M{r}<M{r+2},"MÉDIA",IF(M{r}>M{r+2},"MEDIANA","MÉDIA = MEDIANA")))')
     ws.merge_cells('A57:M57')
     ws['A57'] = dados.get('texto_pesquisa', TEXTO_PESQUISA_PADRAO)
     ws.row_dimensions[57].height = 170
@@ -653,7 +666,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                                 observacoes="", diretor_nome="", diretor_matricula="",
                                 sei_publicacao="", tipo_planilha="HRG",
                                 publicacao_rotulo="1ª PUBLICAÇÃO", texto_pesquisa=TEXTO_PESQUISA_PADRAO,
-                                titulos_pesquisa=TITULOS_PESQUISA_PADRAO):
+                                titulos_pesquisa=TITULOS_PESQUISA_PADRAO, texto_publicacao=None):
     """Gera o Mapa Comparativo / Solicitação de Adjudicação replicando o
     layout usado pela SES/PDPAS (cabeçalho, barra de título, tabela de
     1º/2º/3º colocado por item com saldo remanescente e descrição, tabela de
@@ -727,7 +740,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     # A segunda linha (cotação/ano - publicação) só ganha fundo amarelo nas
     # variantes "...INV"; nas variantes normais (APS/HRG) fica sem destaque,
     # igual aos modelos reais.
-    texto_barra2 = f"{codigo_cotacao}/{ano} – {publicacao_rotulo}"
+    texto_barra2 = f"{codigo_cotacao}/{ano} – {escape(publicacao_rotulo)}"
     if is_inv:
         barra2 = Table([[Paragraph(texto_barra2, estilo_barra)]], colWidths=[largura_util])
         barra2.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), COR_AMARELO_ADJ),
@@ -847,7 +860,8 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         linha4 = [Paragraph("Saldo remanescente", estilo_cel_bold), "",
                   Paragraph(saldo_texto, estilo_cel_bold), "",
                   Paragraph(descricao_1_linha, estilo_desc), "", "", "", "", ""]
-        linha4 += [Paragraph("Preço de referência", estilo_cel_bold), "",
+        criterio = criterio_referencia(item)
+        linha4 += [Paragraph("Preço de referência" + (f" — {criterio}" if criterio else ""), estilo_cel_bold), "",
                    Paragraph(formatar_pesquisa(ref.get("minimo")), estilo_cel_bold)]
         estilos_extra += [("SPAN", (10, linha_idx), (11, linha_idx)),
                           ("BACKGROUND", (10, linha_idx), (12, linha_idx), cor_base)]
@@ -937,9 +951,11 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
             f"Diretor(a) Administrativo(a)/SRSSU: {diretor_nome}, Matrícula: {diretor_matricula}",
             estilo_corpo_centro))
     story.append(Spacer(1, 10))
-    if sei_publicacao:
+    if texto_publicacao is None:
+        texto_publicacao = f"A Publicação no Diário Oficial do DF será realizada pelo SEI {sei_publicacao}" if sei_publicacao else ""
+    if texto_publicacao:
         story.append(Paragraph(
-            f"A Publicação no Diário Oficial do DF será realizada pelo SEI {sei_publicacao}",
+            escape(texto_publicacao).replace("\n", "<br/>"),
             estilo_sei))
 
     story.append(Spacer(1, 14))
@@ -1486,7 +1502,8 @@ class AdjudicacaoOrdemMixin:
                 observacoes=dados_extra.get("observacoes", ""),
                 diretor_nome=self.entry_da_nome.get().strip(),
                 diretor_matricula=self.entry_da_matricula.get().strip(),
-                sei_publicacao=self.entry_sei.get().strip(),  # já vem preenchido na tela principal
+                publicacao_rotulo=dados_extra.get("publicacao_rotulo", OPCOES_PUBLICACAO[0]),
+                texto_publicacao=dados_extra.get("texto_publicacao", TEXTO_PUBLICACAO_PADRAO),
                 tipo_planilha=self._sufixo_planilha_atual,
                 texto_pesquisa=dados_extra["texto_pesquisa"], titulos_pesquisa=pesquisas)
             caminho_excel = os.path.join(self._pasta_cotacao_atual, base + ".xlsx")
@@ -2141,10 +2158,13 @@ class AdjudicacaoOrdemMixin:
         return mapa_itens
 
     def _perguntar_dados_finalizacao(self, objeto_auto="", observacoes_auto="", pesquisa_auto=TEXTO_PESQUISA_PADRAO):
-        """Pergunta/confirma o objeto (título do mapa) e as observações —
-        ambos já vêm pré-preenchidos automaticamente, mas continuam
-        editáveis. O SEI de publicação é lido direto do campo SEI da tela
-        principal, sem precisar perguntar de novo."""
+        """Edita os dados do mapa e a publicação, independentes do SEI da cotação."""
+        caminho = self._caminho_arquivo_mapa_empresas(self._pasta_cotacao_atual, self._codigo_cotacao_atual)
+        try:
+            with open(caminho, encoding="utf-8") as arquivo:
+                dados_salvos = json.load(arquivo).get("dados_mapa", {})
+        except (OSError, ValueError):
+            dados_salvos = {}
         janela = ctk.CTkToplevel(self)
         janela.title("Dados do Mapa Comparativo")
         janela.configure(fg_color=COR_FUNDO_APP)
@@ -2155,6 +2175,17 @@ class AdjudicacaoOrdemMixin:
 
         conteudo = ctk.CTkScrollableFrame(janela)
         conteudo.pack(fill="both", expand=True, padx=16, pady=10)
+        ctk.CTkLabel(conteudo, text="Publicação da cotação:", font=("Segoe UI", 20, "bold"),
+                     text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(12, 4))
+        publicacao_salva = dados_salvos.get("publicacao_rotulo", OPCOES_PUBLICACAO[0])
+        var_publicacao = tk.StringVar(master=janela, value=publicacao_salva if publicacao_salva in OPCOES_PUBLICACAO else OPCOES_PUBLICACAO[0])
+        ctk.CTkOptionMenu(conteudo, values=OPCOES_PUBLICACAO, variable=var_publicacao,
+                          font=("Segoe UI", 18), width=240).pack(anchor="w", padx=16)
+        ctk.CTkLabel(conteudo, text="Publicação no Diário Oficial — texto do rodapé (editável):",
+                     font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=16, pady=(12, 4))
+        entry_publicacao = ctk.CTkTextbox(conteudo, height=80, font=("Segoe UI", 18))
+        entry_publicacao.pack(fill="x", padx=16)
+        entry_publicacao.insert("1.0", dados_salvos.get("texto_publicacao", TEXTO_PUBLICACAO_PADRAO))
         ctk.CTkLabel(conteudo, text="OBJETO da cotação (título do mapa):", font=("Segoe UI", 20, "bold"),
                      text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(16, 4))
         entry_objeto = ctk.CTkTextbox(conteudo, height=100, font=("Segoe UI", 18))
@@ -2178,9 +2209,22 @@ class AdjudicacaoOrdemMixin:
         resultado = {}
 
         def confirmar():
+            resultado["publicacao_rotulo"] = var_publicacao.get()
+            resultado["texto_publicacao"] = entry_publicacao.get("1.0", "end-1c")
             resultado["texto_pesquisa"] = entry_pesquisa.get("1.0", "end").strip()
             resultado["objeto"] = entry_objeto.get("1.0", "end").strip()
             resultado["observacoes"] = entry_obs.get("1.0", "end").strip()
+            try:
+                with open(caminho, encoding="utf-8") as arquivo:
+                    dados = json.load(arquivo)
+                dados.setdefault("dados_mapa", {}).update({chave: resultado[chave]
+                    for chave in ("publicacao_rotulo", "texto_publicacao")})
+                with open(caminho + ".tmp", "w", encoding="utf-8") as arquivo:
+                    json.dump(dados, arquivo, ensure_ascii=False, indent=2)
+                os.replace(caminho + ".tmp", caminho)
+            except (OSError, ValueError) as erro:
+                messagebox.showerror("Erro ao salvar publicação", str(erro), parent=janela)
+                return
             janela.destroy()
 
         ctk.CTkButton(janela, text="Gerar Mapa Comparativo", font=("Segoe UI", 20, "bold"), height=46,

@@ -222,11 +222,16 @@ class TelaPesquisaItemTest(unittest.TestCase):
             App()._perguntar_pesquisas_precos([primeiro])
 
     def test_observacao_na_justificativa_editavel(self):
+        import json
+        import tempfile
+        from pathlib import Path
         primeiro = item()
         primeiro['observacaoitem'] = 'Prazo confirmado.'
         texto = adj.montar_texto_pesquisa_justificativa([primeiro])
         Widget.criados = []
         class App(adj.AdjudicacaoOrdemMixin):
+            def _caminho_arquivo_mapa_empresas(self, *args):
+                return self.arquivo
             def wait_window(self, janela):
                 caixas = [w for w in Widget.criados if w.kwargs.get('height') == 350]
                 self.teste.assertTrue(caixas[0].get().endswith('ITEM 1 Prazo confirmado.'))
@@ -236,8 +241,13 @@ class TelaPesquisaItemTest(unittest.TestCase):
         app = App()
         app.teste = self
         with ExitStack() as stack:
-            for nome in ('CTkToplevel', 'CTkScrollableFrame', 'CTkLabel', 'CTkTextbox', 'CTkButton'):
+            pasta = stack.enter_context(tempfile.TemporaryDirectory())
+            app._pasta_cotacao_atual, app._codigo_cotacao_atual = pasta, '1'
+            app.arquivo = str(Path(pasta) / 'mapa.json')
+            Path(app.arquivo).write_text(json.dumps({'dados_mapa': {}}))
+            for nome in ('CTkToplevel', 'CTkScrollableFrame', 'CTkLabel', 'CTkTextbox', 'CTkButton', 'CTkOptionMenu'):
                 stack.enter_context(patch.object(adj.ctk, nome, Widget))
+            stack.enter_context(patch.object(adj.tk, 'StringVar', Var))
             resultado = app._perguntar_dados_finalizacao('', '', texto)
         self.assertTrue(resultado['texto_pesquisa'].endswith('ITEM 1 Prazo confirmado.\nComplemento editado.'))
 
