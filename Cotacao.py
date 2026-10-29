@@ -305,8 +305,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     # ---- barra "entrega imediata" (cor base) ----
     barra_entrega = Table([[Paragraph(
-        ("PESQUISA DE PREÇOS PARA AQUISIÇÃO POR CONTRAPARTIDA" if is_inv and not is_hrg else
-         "3 - PREFERENCIALMENTE ENTREGA IMEDIATA APÓS A SOLICITAÇÃO AO FORNECEDOR"),
+        "3 - PREFERENCIALMENTE ENTREGA IMEDIATA APÓS A SOLICITAÇÃO AO FORNECEDOR",
         estilo_entrega_bar)]], colWidths=[largura_util])
     barra_entrega.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), cor_base), ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
@@ -469,11 +468,15 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
             f"10.1 - CNPJ: {cnpj_unidade}. Endereço: {insc_ou_endereco}", estilo_corpo_bold_italic))
         label_item11 = template_nucleo.get("label_item11", "Informações Técnicas e responsável "
                                                             "pelo Atesto:")
-        story.append(Paragraph(
-            f"11 - {label_item11} {escape(contato_texto)}", estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic))
-        story.append(Paragraph(
-            f"{template_nucleo['cargo']}{template_nucleo.get('extra', '')}",
-            estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic))
+        texto_contato = f"11 - {label_item11} {escape(contato_texto)}"
+        texto_cargo = f"{template_nucleo['cargo']}{template_nucleo.get('extra', '')}"
+        estilo_contato = estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic
+        if is_inv and not is_hrg:
+            # Um só parágrafo aproveita o espaço restante após o contato.
+            story.append(Paragraph(texto_contato + (" — " + escape(texto_cargo) if texto_cargo else ""), estilo_contato))
+        else:
+            story.append(Paragraph(texto_contato, estilo_contato))
+            story.append(Paragraph(texto_cargo, estilo_contato))
 
     # Grade de duas colunas, na mesma ordem visual dos modelos oficiais.
     story.append(Table([[Paragraph("12 - Solicitamos que as propostas apresentem:", estilo_corpo)]],
@@ -525,6 +528,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     if not is_inv and origem_chave != "NECFM":
         story.append(Paragraph("13.6 - Para venda de <b>MEDICAMENTOS</b> apresentar <b>AFE</b> para Distribuição de "
                                "Medicamentos - RDC 430/2020 ANVISA e <b>Alvará / Licença Sanitária.</b>", estilo_corpo))
+    if (not is_inv and origem_chave != "NECFM") or (is_inv and not is_hrg):
         story.append(Paragraph("14- O contratado deverá manter, durante toda a execução do contrato, as condições exigidas "
                                "para a habilitação, Lei 14.133/2021 art. 92, XVI;", estilo_corpo))
     story.append(Spacer(1, 4))

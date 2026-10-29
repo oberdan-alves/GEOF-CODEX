@@ -58,7 +58,9 @@ class ModelosPedidoTest(unittest.TestCase):
                         self.assertTrue(any(s['color'] == 0xff0000 for s in spans))
                         self.assertNotIn('Chefe do Núcleo de Engenharia Clínica e Física Médica/HRG', texto)
                     if tipo == 'APS INV':
-                        self.assertIn('PESQUISA DE PREÇOS PARA AQUISIÇÃO POR CONTRAPARTIDA', texto)
+                        self.assertIn('3 - PREFERENCIALMENTE ENTREGA IMEDIATA APÓS A SOLICITAÇÃO AO FORNECEDOR', texto)
+                        self.assertNotIn('PESQUISA DE PREÇOS PARA AQUISIÇÃO POR CONTRAPARTIDA', texto)
+                        self.assertIn('14- O contratado deverá manter', texto)
 
     def test_farmacia_aps_aliases_e_contato_personalizado(self):
         with tempfile.TemporaryDirectory() as pasta:
@@ -102,6 +104,14 @@ class ModelosPedidoTest(unittest.TestCase):
                 self.assertNotIn('98366-0250', texto)
             with self.gerar(pasta, 'APS', 'NFH', contatos=dict(CONTATOS_ORDEM_PADRAO, NFL='')) as pdf:
                 self.assertNotIn(CONTATOS_ORDEM_PADRAO['NFL'], ' '.join(pdf[0].get_text().split()))
+
+    def test_cargo_aps_investimento_aproveita_linha_do_contato(self):
+        contatos = dict(CONTATOS_ORDEM_PADRAO, NPDOC_APSINV='ANA')
+        with tempfile.TemporaryDirectory() as pasta, self.gerar(pasta, 'APS INV', 'NPDOC', contatos=contatos) as pdf:
+            nome = pdf[0].search_for('ANA')[0]
+            cargo = pdf[0].search_for('Chefe do Núcleo')[0]
+            self.assertAlmostEqual(nome.y0, cargo.y0, delta=1)
+            self.assertGreater(cargo.x0, nome.x0)
 
 
 if __name__ == '__main__':
