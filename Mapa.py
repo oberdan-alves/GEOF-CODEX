@@ -25,6 +25,7 @@ Mapa Comparativo e as Ordens de Compra.
 """
 
 import os
+from caminhos import normalizar_caminho
 import json
 from xml.sax.saxutils import escape
 from decimal import Decimal, ROUND_HALF_UP
@@ -333,7 +334,7 @@ class MapaMixin:
             return
         pasta_propostas, codigo_cotacao, ano = contexto
         try:
-            os.startfile(pasta_propostas)
+            os.startfile(normalizar_caminho(pasta_propostas))
         except Exception as e:
             messagebox.showerror("Erro ao abrir pasta", f"Não foi possível abrir:\n{pasta_propostas}\n\n{e}")
 
@@ -341,7 +342,7 @@ class MapaMixin:
     # LISTAR EMPRESAS
     # ------------------------------------------------------------------
     def acao_listar_empresas(self):
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
 
         if not pasta_geof:
@@ -562,7 +563,7 @@ class MapaMixin:
         app (MAPA_EMPRESAS, MAPA_COMPARATIVO, RELAÇÃO, ORDEM) são salvos em
         _pasta_cotacao_atual (…\\COTACAO\\{código}, um nível acima), para não
         misturar com as propostas."""
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
         codigo_cotacao = (self.entradas_cotacao[self.indice_cotacao_ativa].get().strip()
                            if self.indice_cotacao_ativa is not None else "")

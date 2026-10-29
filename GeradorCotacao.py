@@ -30,6 +30,7 @@ Dependências: customtkinter, openpyxl, pandas, reportlab, pillow, pymupdf
 """
 
 import os
+from caminhos import normalizar_caminho
 import re
 import json
 import glob
@@ -1120,7 +1121,7 @@ class _AppCotacaoBase(ctk.CTk):
         if self.indice_cotacao_ativa is None:
             return None
         codigo = self.entradas_cotacao[self.indice_cotacao_ativa].get().strip()
-        pasta = self.entry_pasta_geof.get().strip()
+        pasta = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
         tipo = getattr(self, "_sufixo_planilha_atual", "")
         if not pasta or not tipo or len(ano) != 4 or len(codigo) != 3 or not codigo.isdigit():
@@ -1189,7 +1190,7 @@ class _AppCotacaoBase(ctk.CTk):
 
     def _salvar_defaults_atuais(self):
         self.config_dados.update({
-            "pasta_geof": self.entry_pasta_geof.get().strip(),
+            "pasta_geof": normalizar_caminho(self.entry_pasta_geof.get()),
             "ano": self.entry_ano.get().strip(),
             "bimestre": self.var_bimestre.get(),
             "da_nome": self.entry_da_nome.get().strip(),
@@ -1206,7 +1207,7 @@ class _AppCotacaoBase(ctk.CTk):
     # ------------------------------------------------------------------
     def _montar_caminho_pasta_matrix(self):
         """GEOF + TIPO (conforme NOME PLANILHA) + 'PDPAS ANO' + 'MATRIX'."""
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         if not pasta_geof:
             return None
         tipo = getattr(self, "_sufixo_planilha_atual", "APS")
@@ -1244,7 +1245,7 @@ class _AppCotacaoBase(ctk.CTk):
         em cache — já que ele ainda existe em disco — e a consulta parecia
         não encontrar nada, mesmo com dados reais na planilha nova."""
         chave_atual = (
-            self.entry_pasta_geof.get().strip(),
+            normalizar_caminho(self.entry_pasta_geof.get()),
             self.entry_ano.get().strip(),
             getattr(self, "_sufixo_planilha_atual", ""),
             self.var_nome_planilha.get(),
@@ -1620,7 +1621,7 @@ class _AppCotacaoBase(ctk.CTk):
         normalmente, sem exibir erro nenhum."""
         if self.indice_cotacao_ativa is None:
             return
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         tipo = getattr(self, "_sufixo_planilha_atual", "")
         codigo_ativo = self.entradas_cotacao[self.indice_cotacao_ativa].get().strip()
         if not pasta_geof or not tipo or len(codigo_ativo) != 3:
@@ -1636,7 +1637,7 @@ class _AppCotacaoBase(ctk.CTk):
         if not candidatos:
             return
         try:
-            os.startfile(candidatos[0])
+            os.startfile(normalizar_caminho(candidatos[0]))
         except Exception:
             pass  # abrir o PDF é só uma conveniência; a consulta já foi concluída
 
@@ -1657,7 +1658,7 @@ class _AppCotacaoBase(ctk.CTk):
 
         if self.indice_cotacao_ativa is None:
             return
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         tipo = getattr(self, "_sufixo_planilha_atual", "")
         codigo_ativo = self.entradas_cotacao[self.indice_cotacao_ativa].get().strip()
         if not pasta_geof or not tipo or len(codigo_ativo) != 3:
@@ -1697,7 +1698,7 @@ class _AppCotacaoBase(ctk.CTk):
 
     def acao_consultar_matrix(self):
         """Localiza e abre a Matrix selecionada no aplicativo de planilhas."""
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
         if not pasta_geof:
             messagebox.showwarning("Atenção", "Informe o caminho da PASTA DE TRABALHO (até \\GEOF).")
@@ -1746,7 +1747,7 @@ class _AppCotacaoBase(ctk.CTk):
     @staticmethod
     def _abrir_planilha_matrix(caminho):
         """Abre o arquivo existente sem alterar seus dados, imagens ou modelos."""
-        caminho = os.path.abspath(caminho)
+        caminho = os.path.abspath(normalizar_caminho(caminho))
         if not os.path.isfile(caminho):
             raise FileNotFoundError(f"Planilha não encontrada: {caminho}")
         if sys.platform == "win32":

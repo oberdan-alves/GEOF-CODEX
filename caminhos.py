@@ -1,5 +1,17 @@
 from pathlib import Path
+import os
+import ntpath
 import sys
+
+
+def normalizar_caminho(caminho):
+    """Preserva UNC/unidades e usa os separadores nativos antes de abrir no Windows."""
+    texto = str(caminho).strip() if caminho is not None else ""
+    if len(texto) >= 2 and texto[0] == texto[-1] and texto[0] in ('"', "'"):
+        texto = texto[1:-1].strip()
+    if not texto:
+        return ""
+    return ntpath.normpath(texto) if os.name == "nt" else os.path.normpath(texto)
 
 
 def caminho_recurso(nome):

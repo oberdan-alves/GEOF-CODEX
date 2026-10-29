@@ -36,6 +36,7 @@ mesmo que a tela esteja mostrando outra coisa.
 """
 
 import os
+from caminhos import normalizar_caminho
 import json
 import tkinter as tk
 from Mensagens import messagebox
@@ -575,7 +576,7 @@ class CotacaoMixin:
         Com incluir_propostas=True, devolve o caminho até a subpasta
         PROPOSTAS (…\\COTACAO\\{código}\\PROPOSTAS); caso contrário, devolve
         o caminho até a pasta da cotação (…\\COTACAO\\{código})."""
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
         tipo = getattr(self, "_sufixo_planilha_atual", "")
         if not pasta_geof or not ano or not tipo or not codigo_cotacao:
@@ -608,7 +609,7 @@ class CotacaoMixin:
         return self._obter_pasta_cotacao(codigo_cotacao, incluir_propostas=incluir_propostas)
 
     def acao_criar_pasta_cotacao(self):
-        pasta_geof = self.entry_pasta_geof.get().strip()
+        pasta_geof = normalizar_caminho(self.entry_pasta_geof.get())
         ano = self.entry_ano.get().strip()
         tipo = getattr(self, "_sufixo_planilha_atual", "")
 
