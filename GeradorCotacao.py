@@ -607,7 +607,8 @@ def converter_pdf_para_jpg(caminho_pdf, caminho_jpg_sem_extensao):
     return caminho_final
 
 
-def montar_cabecalho_institucional(largura_util, linhas_texto, tamanho_logo=1.7 * cm):
+def montar_cabecalho_institucional(largura_util, linhas_texto, tamanho_logo=1.7 * cm,
+                                  fonte="Helvetica-Bold", tamanho_fonte=9, entrelinhas=11):
     """Monta o cabeçalho padrão dos documentos PDF (Pedido de Cotação, Mapa
     Comparativo, Ordem de Compra): o brasão do GDF à esquerda e o texto
     institucional ALINHADO À ESQUERDA logo ao lado dele — replicando o
@@ -622,8 +623,8 @@ def montar_cabecalho_institucional(largura_util, linhas_texto, tamanho_logo=1.7 
     aviso é impresso no console para facilitar o diagnóstico.
     """
     estilo_texto = ParagraphStyle(
-        "CabecalhoInstitucional", fontName="Helvetica-Bold", fontSize=9,
-        leading=11, alignment=TA_LEFT)
+        "CabecalhoInstitucional", fontName=fonte, fontSize=tamanho_fonte,
+        leading=entrelinhas, alignment=TA_LEFT)
     paragrafo = Paragraph("<br/>".join(linhas_texto), estilo_texto)
 
     logo_flowable = ""

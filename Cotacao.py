@@ -38,6 +38,7 @@ mesmo que a tela esteja mostrando outra coisa.
 import os
 from caminhos import normalizar_caminho
 import json
+from xml.sax.saxutils import escape
 import tkinter as tk
 from Mensagens import messagebox
 
@@ -56,7 +57,7 @@ from GeradorCotacao import (
     COR_CIANO_ADJ, COR_VERDE_ADJ, COR_AMARELO_ADJ,
     CONTATOS_ORDEM_PADRAO,
     converter_pdf_para_jpg, exibir_preview_pdf_jpg, montar_cabecalho_institucional,
-    buscar_cotacoes_na_planilha,
+    buscar_cotacoes_na_planilha, formatar_numero_inteiro,
 )
 
 # ----------------------------------------------------------------------
@@ -72,20 +73,24 @@ NUCLEO_TEMPLATES = {
         "chave_contato": "NPDOC_HRGINV",
         "cargo": "Chefe do Núcleo de Patrimônio e Documentação Administrativa",
         "extra": " e sala 3449 7083",
+        "label_item11": "Informações Técnicas e responsável pelo RECEBIMENTO E ATESTO:",
     },
     ("NPDOC", "APS"): {
         "nome_nucleo": "Patrimônio", "sigla": "NPDOC/APS",
+        "setor_sigla": "NPDOC/APS SUL",
         "horario": "de 07h às 12h e 14h às 18h, de segunda a quinta-feira",
         "chave_contato": "NPDOC_APSINV",
         "cargo": "Chefe do Núcleo de Patrimônio e Documentação Administrativa",
         "extra": "", "destaque_vermelho": True,
+        "label_item11": "Informações Técnicas e responsável pelo RECEBIMENTO E ATESTO:",
     },
     ("NUAL", "HRG"): {
         "nome_nucleo": "Almoxarifado", "sigla": "NUAL/HRG",
         "horario": "de 08h às 12h e de 14h às 17h, de segunda a sexta-feira",
         "chave_contato": "NUAL_HRG",
         "cargo": "Chefe do Núcleo de Almoxarifado/HRG",
-        "extra": "",
+        "contato_modelo": "WEILLER MACHADO NOBRE ALVES, matrícula 1.710.888-8",
+        "extra": " – (61) 3449-7092/7093/7094 61 9 8163 2656", "destaque_item10": "base",
     },
     ("NUAL", "APS"): {
         "nome_nucleo": "ALMOXARIFADO da Gerência de Apoio Operacional da Atenção Primária SUL",
@@ -99,8 +104,7 @@ NUCLEO_TEMPLATES = {
         "nome_nucleo": "ENGENHARIA", "sigla": "NECFM/GAOESP", "setor_sigla": "NECFM/GAOESP-APS",
         "horario": "de 08h às 12h e de 13h às 16h, de segunda a sexta-feira",
         "chave_contato": "NECFM",
-        "cargo": "Chefe do Núcleo de Engenharia Clínica e Física Médica/HRG NECFM (MEZANINO ACIMA DO PAI)",
-        "extra": "– (61) 9639-0162.", "destaque_vermelho": True, "modelo_entrega": "agendar",
+        "cargo": "", "extra": "(61) 9639-0162.", "destaque_vermelho": True, "modelo_entrega": "agendar",
         "destaque_item10": "base",
         "label_item11": "Informações, agendamentos, Marcação de Visitas técnicas e "
                         "responsável pelo Atesto para pagamento:",
@@ -117,8 +121,12 @@ NUCLEO_TEMPLATES = {
                         "responsável pelo Atesto para pagamento:",
     },
     ("NFL", "APS"): {
-        "nome_nucleo": "Farmácia", "sigla": "NFL/APS",
-        "horario": "", "chave_contato": "NFL", "cargo": "Farmácia", "extra": "",
+        "nome_nucleo": "FARMÁCIA da Gerência de Apoio Operacional da Atenção Primária SUL",
+        "sigla": "NLF/GAOAPS", "setor_sigla": "NLF/GAOAPS-SUL",
+        "horario": "de 08h às 12h e de 13h às 16h, de segunda a sexta-feira",
+        "chave_contato": "NFL", "cargo": "Chefe do Núcleo de Logística Farmacêutica/GAOAPS-SUL – (61) 98366-0250.",
+        "contato_modelo": "RAFAEL DE SOUZA MARTINEZ, matrícula 1.709.374-0",
+        "extra": "", "destaque_item10": "base",
     },
     ("NFH", "HRG"): {
         # modelo próprio (153/2026): item 10 com destaque na cor base (ciano)
@@ -164,42 +172,45 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     is_hrg = "HRG" in tipo_norm
     is_inv = "INV" in tipo_norm
     grupo = "HRG" if is_hrg else "APS"
-    cor_base = COR_CIANO_ADJ if is_hrg else COR_VERDE_ADJ
+    cor_base = colors.HexColor("#80FFFF") if is_hrg else COR_VERDE_ADJ
     origem_norm = (origem or "").strip().upper()
+    origem_chave = origem_norm.split("/")[0]
+    if grupo == "APS" and origem_chave in ("NFH", "NLF"):
+        origem_chave = "NFL"
 
     doc = SimpleDocTemplate(caminho_pdf, pagesize=A4,
-                             topMargin=0.5 * cm, bottomMargin=0.5 * cm,
-                             leftMargin=1.2 * cm, rightMargin=1.2 * cm)
+                             topMargin=0.05 * cm, bottomMargin=0.2 * cm,
+                             leftMargin=0.2 * cm, rightMargin=0.2 * cm)
     styles = getSampleStyleSheet()
-    largura_util = A4[0] - 2.4 * cm
+    largura_util = A4[0] - 0.4 * cm
 
     estilo_publpor = ParagraphStyle("PublPor", parent=styles["Normal"], fontSize=9,
-                                    fontName="Helvetica-Bold")
+                                    fontName="Times-Bold")
     estilo_barra_esq = ParagraphStyle("BarraEsqPed", parent=styles["Normal"], fontSize=8,
-                                      fontName="Helvetica-Bold", alignment=TA_LEFT, leading=9.5)
-    estilo_barra_centro = ParagraphStyle("BarraCentroPed", parent=styles["Normal"], fontSize=16, leading=18,
+                                      fontName="Times-Bold", alignment=TA_CENTER, leading=9.5)
+    estilo_barra_centro = ParagraphStyle("BarraCentroPed", parent=styles["Normal"], fontSize=18, leading=20,
                                          fontName="Helvetica-Bold", alignment=TA_CENTER)
     estilo_barra_direita = ParagraphStyle("BarraDirPed", parent=styles["Normal"], fontSize=10,
-                                          fontName="Helvetica-Bold", alignment=TA_RIGHT, leading=12)
+                                          fontName="Times-Bold", alignment=TA_RIGHT, leading=12)
     estilo_setor_label = ParagraphStyle("SetorLabel", parent=styles["Normal"], fontSize=8.5, leading=10,
-                                        fontName="Helvetica-Bold", alignment=TA_LEFT)
+                                        fontName="Times-Bold", alignment=TA_CENTER)
     estilo_setor_valor = ParagraphStyle("SetorValor", parent=styles["Normal"], fontSize=8.5,
                                         leading=10,
                                         fontName="Helvetica-Bold", alignment=TA_CENTER,
                                         textColor=colors.red)
-    estilo_prazo = ParagraphStyle("PrazoPed", parent=styles["Normal"], fontSize=9, leading=10.5,
-                                  fontName="Helvetica-Bold", alignment=TA_CENTER)
-    estilo_entrega_bar = ParagraphStyle("EntregaBar", parent=styles["Normal"], fontSize=9, leading=10.5,
-                                        fontName="Helvetica-BoldOblique", alignment=TA_CENTER)
-    estilo_corpo = ParagraphStyle("CorpoPed", parent=styles["Normal"], fontSize=8.3, leading=9.3,
-                                    alignment=TA_JUSTIFY)
+    estilo_prazo = ParagraphStyle("PrazoPed", parent=styles["Normal"], fontSize=13, leading=15,
+                                  fontName="Times-Bold", alignment=TA_CENTER)
+    estilo_entrega_bar = ParagraphStyle("EntregaBar", parent=styles["Normal"], fontSize=12, leading=14,
+                                        fontName="Times-BoldItalic", alignment=TA_CENTER)
+    estilo_corpo = ParagraphStyle("CorpoPed", parent=styles["Normal"], fontSize=9, leading=10.8,
+                                    fontName="Times-Roman", alignment=TA_LEFT)
     estilo_corpo_bold = ParagraphStyle("CorpoPedBold", parent=estilo_corpo,
-                                       fontName="Helvetica-Bold")
+                                       fontName="Times-Bold")
     estilo_corpo_bold_italic = ParagraphStyle("CorpoPedBI", parent=estilo_corpo,
-                                              fontName="Helvetica-BoldOblique")
+                                              fontName="Times-BoldItalic")
     estilo_corpo_red = ParagraphStyle("CorpoPedRed", parent=estilo_corpo, textColor=colors.red,
                                       fontName="Helvetica-Bold")
-    estilo_cel = ParagraphStyle("CelPed", parent=styles["Normal"], fontSize=8, leading=9.7)
+    estilo_cel = ParagraphStyle("CelPed", parent=styles["Normal"], fontSize=9, leading=11, fontName="Times-Roman")
     estilo_cel_center = ParagraphStyle("CelPedC", parent=estilo_cel, alignment=TA_CENTER)
     estilo_rodape = ParagraphStyle("RodapePed", parent=styles["Normal"], fontSize=7.3, leading=8.2,
                                    alignment=TA_CENTER, fontName="Helvetica-Bold")
@@ -207,22 +218,24 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     story = []
 
     # ---- cabeçalho: brasão do GDF à esquerda + texto institucional
-    # centralizado, "Publ. por" / "SEI" logo abaixo, acima da barra ----
-    story.append(montar_cabecalho_institucional(largura_util, [
+    # "Publ. por" à esquerda e SEI à direita, conforme os modelos.
+    linhas_cabecalho = [
         "GOVERNO DO DISTRITO FEDERAL",
         "SECRETARIA DE ESTADO DE SAÚDE",
         "SUPERINTENDÊNCIA DA REGIÃO DE SAÚDE SUL",
-        "DIRETORIA ADMINISTRATIVA",
-        f"PROGRAMA DE DESCENTRALIZAÇÃO PROGRESSIVA DE AÇÕES DE SAÚDE - PDPAS"
-        f"{'/' + grupo if is_hrg else ''}",
-    ]))
-    story.append(Spacer(1, 4))
+        "DIRETORIA ADMINISTRATIVA"]
+    if not (is_inv and not is_hrg):
+        linhas_cabecalho.append("PROGRAMA DE DESCENTRALIZAÇÃO PROGRESSIVA DE AÇÕES DE SAÚDE - PDPAS" +
+                                ("/HRG" if is_hrg else " / APS - SUL"))
+    story.append(montar_cabecalho_institucional(
+        largura_util, linhas_cabecalho, tamanho_logo=2.3 * cm,
+        fonte="Times-Bold", tamanho_fonte=10.3, entrelinhas=13))
 
     estilo_publicacao_direita = ParagraphStyle(
         "PublicacaoDireita", parent=estilo_publpor, alignment=TA_RIGHT)
     linha_publ = [
-        Paragraph(f"SEI: {sei_texto}", estilo_publpor) if sei_texto else "",
-        Paragraph(f"Publ. por: <u>{operador or ''}</u>", estilo_publicacao_direita),
+        Paragraph(f"Publ. por: &nbsp;&nbsp; {escape(operador or '')}", estilo_publpor),
+        Paragraph(f"SEI: &nbsp;&nbsp;&nbsp; {escape(str(sei_texto or ''))}", estilo_publicacao_direita),
     ]
     tabela_publ = Table([linha_publ], colWidths=[largura_util * 0.6, largura_util * 0.4])
     tabela_publ.setStyle(TableStyle([
@@ -230,7 +243,6 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(tabela_publ)
-    story.append(Spacer(1, 4))
 
     # ---- barra de título (3 células) ----
     if is_inv:
@@ -240,38 +252,51 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         texto_bar1 = "SUPERINTENDÊNCIA DA REGIÃO DE SAÚDE SUL -"
         cor_bar1 = colors.white
     texto_bar2 = "HRG" if is_hrg else ("APS Sul" if is_inv else "APS - SUL")
+    largura_direita = largura_util * .42 - 12
+    titulo_pedido = "PEDIDO DE COTAÇÃO<br/>CONTRAPARTIDA" if is_inv and not is_hrg else "PEDIDO DE COTAÇÃO PDPAS"
+    celula_pedido = Table([[Paragraph(titulo_pedido, ParagraphStyle(
+        "TituloPedido", parent=estilo_barra_direita, fontSize=8, leading=9, alignment=TA_CENTER)),
+        Paragraph(f"{codigo_cotacao}/{ano}", ParagraphStyle(
+            "NumeroPedido", parent=estilo_barra_direita, fontSize=20, leading=22))]],
+        colWidths=[largura_direita * .60, largura_direita * .40],
+        style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                          ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                          ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
 
     barra_titulo = Table(
-        [[Paragraph(texto_bar1, estilo_barra_esq), Paragraph(texto_bar2, estilo_barra_centro),
-          Paragraph(f'PEDIDO DE COTAÇÃO PDPAS &nbsp;&nbsp;'
-                    f'<font size="13">{codigo_cotacao}/{ano}</font>', estilo_barra_direita)]],
+        [[Paragraph(texto_bar1, estilo_barra_esq), Paragraph(f'<nobr>{texto_bar2}</nobr>', estilo_barra_centro),
+          celula_pedido]],
         colWidths=[largura_util * 0.42, largura_util * 0.16, largura_util * 0.42])
     barra_titulo.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 1, colors.black),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
         ("BACKGROUND", (0, 0), (0, 0), cor_bar1),
-        ("BACKGROUND", (1, 0), (1, 0), cor_base),
+        ("BACKGROUND", (1, 0), (1, 0), COR_AMARELO_ADJ if is_inv else cor_base),
+        ("BACKGROUND", (2, 0), (2, 0), COR_AMARELO_ADJ if is_inv else colors.white),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (0, 0), 8),
+        ("LEFTPADDING", (1, 0), (1, 0), 1), ("RIGHTPADDING", (1, 0), (1, 0), 1),
     ]))
     story.append(barra_titulo)
     story.append(Spacer(1, 4))
 
     # ---- Setor Solicitante + prazo de recebimento ----
     sigla_origem = origem_norm
-    template_nucleo = NUCLEO_TEMPLATES.get((origem_norm, grupo))
+    template_nucleo = NUCLEO_TEMPLATES.get((origem_chave, grupo))
+    if template_nucleo is None and is_inv:
+        template_nucleo = NUCLEO_TEMPLATES[("NPDOC", grupo)]
     if template_nucleo:
         sigla_origem = template_nucleo.get("setor_sigla", template_nucleo["sigla"])
     elif origem_norm:
         sigla_origem = f"{origem_norm}/{grupo}"
 
     caixa_setor = Paragraph(
-        f'Setor Solicitante: <font color="red">{sigla_origem}</font>', estilo_setor_label)
+        f'Setor Solicitante:<br/><br/><font size="7.5" color="{"red" if origem_chave == "NECFM" else "black"}"><nobr>{escape(sigla_origem)}</nobr></font>', estilo_setor_label)
     caixa_prazo = Paragraph(
         "2 - Prazo para recebimento das propostas, conforme <nobr>publicado no E-MAIL.</nobr>",
         estilo_prazo)
     linha_setor = Table([[caixa_setor, caixa_prazo]],
-                        colWidths=[largura_util * 0.30, largura_util * 0.70])
+                        colWidths=[largura_util * 0.16, largura_util * 0.84])
     linha_setor.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 1, colors.black),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
@@ -282,7 +307,8 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     # ---- barra "entrega imediata" (cor base) ----
     barra_entrega = Table([[Paragraph(
-        "3 - PREFERENCIALMENTE ENTREGA IMEDIATA APÓS A SOLICITAÇÃO AO FORNECEDOR",
+        ("PESQUISA DE PREÇOS PARA AQUISIÇÃO POR CONTRAPARTIDA" if is_inv and not is_hrg else
+         "3 - PREFERENCIALMENTE ENTREGA IMEDIATA APÓS A SOLICITAÇÃO AO FORNECEDOR"),
         estilo_entrega_bar)]], colWidths=[largura_util])
     barra_entrega.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), cor_base), ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
@@ -293,22 +319,22 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     story.append(Paragraph("Prezados Senhores,", estilo_corpo))
     story.append(Spacer(1, 3))
-    if is_hrg:
+    if is_hrg or is_inv:
         story.append(Paragraph(
             "1 - A Superintendência da Região de Saúde Sul convoca as empresas interessadas em "
             "participar da DISPENSA DE LICITAÇÃO, que será levada a efeito no Hospital Regional "
             "do Gama, situado na ÁREA ESPECIAL Nº 01 - Setor Central GAMA – Brasília – DF, para "
             "aquisição dos materiais constantes deste Pedido de Cotação PDPAS. Todos os "
             "documentos do processo poderão ser acompanhados pelo site "
-            "https://www.portalsei.df.gov.br/", estilo_corpo))
+            '<link href="https://www.portalsei.df.gov.br/"><font color="blue"><u>https://www.portalsei.df.gov.br/</u></font></link>', estilo_corpo))
     else:
         story.append(Paragraph(
             "1 - A Superintendência da Região de Saúde Sul convoca as empresas interessadas em "
             "participar da DISPENSA DE LICITAÇÃO, que será levada a efeito na Gerência de "
             "Orçamento e Finanças da Superintendência da Região de Saúde Sul (GEOF/DA/SRSSU/SES) "
-            "- Brasília/DF, para aquisição dos materiais e/ou serviços constantes deste Pedido de "
+            "- Brasília/DF, para aquisição dos materiais " + ("e/ou serviços " if origem_chave == "NECFM" else "") + "constantes deste Pedido de "
             "Cotação PDPAS. Todos os documentos do processo poderão ser acompanhados pelo site "
-            "https://www.portalsei.df.gov.br/", estilo_corpo))
+            '<link href="https://www.portalsei.df.gov.br/"><font color="blue"><u>https://www.portalsei.df.gov.br/</u></font></link>', estilo_corpo))
     story.append(Paragraph(
         "A DISPENSA DE LICITAÇÃO será levada a efeito com fundamento no INCISO II, ARTIGO 75, "
         "LEI Nº 14.133/21.", estilo_corpo))
@@ -333,8 +359,8 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         except (TypeError, ValueError):
             qtd_texto = str(qtd or "")
         dados_tabela.append([
-            str(item.get("ITEM") or ""), item.get("CODIGO") or "",
-            Paragraph(item.get("DESCRICAO") or "", estilo_cel),
+            formatar_numero_inteiro(item.get("ITEM")), item.get("CODIGO") or "",
+            Paragraph(escape(item.get("DESCRICAO") or "").replace("\n", "<br/>"), estilo_cel),
             qtd_texto, item.get("UN") or "",
         ])
         linha_idx += 1
@@ -352,28 +378,33 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     tabela_itens = Table(dados_tabela,
                          colWidths=[1.4 * cm, 1.8 * cm, largura_util - 6.4 * cm, 1.6 * cm, 1.6 * cm],
+                         minRowHeights=[14] + [40 if not isinstance(linha[0], Paragraph) else 0 for linha in dados_tabela[1:]],
                          repeatRows=1)
     tabela_itens.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9D9D9")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Times-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Times-Roman"),
+        ("FONTNAME", (1, 1), (1, -1), "Times-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (1, -1), "CENTER"), ("ALIGN", (3, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (2, 0), (2, 0), "CENTER"),
         ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ] + estilos_extra_itens))
     story.append(tabela_itens)
 
     # ---- OBSERVAÇÕES ----
     estilo_obs_titulo = ParagraphStyle("ObsTitulo", parent=styles["Normal"], fontSize=9, leading=10,
-                                       fontName="Helvetica-Bold", alignment=TA_CENTER)
+                                       fontName="Times-Bold", alignment=TA_CENTER)
     story.append(Table([[Paragraph("OBSERVAÇÕES:", estilo_obs_titulo)]], colWidths=[largura_util],
                        style=TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+                                         ("BACKGROUND", (0, 0), (-1, -1), COR_AMARELO_ADJ if is_inv and is_hrg else colors.white),
                                          ("TOPPADDING", (0, 0), (-1, -1), 2),
                                          ("BOTTOMPADDING", (0, 0), (-1, -1), 2)])))
 
     destaque_vermelho = bool(template_nucleo and template_nucleo.get("destaque_vermelho")
-                             and origem_norm == "NECFM")
+                             and origem_chave == "NECFM")
     if destaque_vermelho:
         for linha in TEXTO_OBSERVACAO_NECFM:
             story.append(Paragraph(linha, estilo_corpo_red))
@@ -389,9 +420,12 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     if is_inv:
         story.append(Table([[Paragraph(
-            "7 - Amostra do item poderá ser solicitada. ENVIAR IMAGENS, FICHA TÉCNICA, FOLDERS.",
-            estilo_corpo_bold)]], colWidths=[largura_util],
-            style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), cor_base)])))
+            ("7 - Amostra do item poderá ser solicitada. INCLUIR IMAGENS/ FICHAS TÉCNICAS/ FOLDERS de cada item"
+             if is_hrg else "7 - Amostra do item poderá ser solicitada. ENVIAR IMAGENS, FICHA TÉCNICA, FOLDERS."),
+            estilo_corpo_red)]], colWidths=[largura_util],
+            style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), COR_AMARELO_ADJ if is_hrg else colors.white),
+                              ("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 0)])))
     else:
         story.append(Paragraph("7 - Amostra do item poderá ser solicitada.", estilo_corpo))
 
@@ -416,6 +450,9 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
 
     if template_nucleo:
         contato_texto = contatos.get(template_nucleo["chave_contato"], "")
+        if template_nucleo.get("contato_modelo") and (
+                not contato_texto or contato_texto == CONTATOS_ORDEM_PADRAO.get(template_nucleo["chave_contato"])):
+            contato_texto = template_nucleo["contato_modelo"]
         texto_item10 = (
             f"10 - Entrega/Recolhimento agendar no Núcleo de {template_nucleo['nome_nucleo']} - "
             f"({template_nucleo['sigla']}) {template_nucleo['horario']}."
@@ -431,34 +468,49 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
                                colWidths=[largura_util],
                                style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), cor_destaque10)])))
         else:
-            story.append(Paragraph(texto_item10, estilo_corpo_bold_italic))
+            story.append(Paragraph(texto_item10, estilo_corpo if is_inv else estilo_corpo_bold_italic))
 
         story.append(Paragraph(
             f"10.1 - CNPJ: {cnpj_unidade}. Endereço: {insc_ou_endereco}", estilo_corpo_bold_italic))
         label_item11 = template_nucleo.get("label_item11", "Informações Técnicas e responsável "
                                                             "pelo Atesto:")
         story.append(Paragraph(
-            f"11 - {label_item11} {contato_texto}", estilo_corpo_bold_italic))
+            f"11 - {label_item11} {escape(contato_texto)}", estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic))
         story.append(Paragraph(
             f"{template_nucleo['cargo']}{template_nucleo.get('extra', '')}",
-            estilo_corpo_red if destaque_vermelho else estilo_corpo_bold_italic))
-    story.append(Spacer(1, 4))
+            estilo_corpo_red if destaque_vermelho or (is_inv and not is_hrg) else estilo_corpo_bold_italic))
 
-    # ---- item 12 (lista vertical, sem tabela, para ocupar menos espaço —
-    # só a linha "12 -" fica em negrito; os sub-itens ficam em fonte normal) ----
-    story.append(Paragraph("12 - Solicitamos que as propostas apresentem:", estilo_corpo_bold))
-    for texto_12 in [
+    # Grade de duas colunas, na mesma ordem visual dos modelos oficiais.
+    story.append(Table([[Paragraph("12 - Solicitamos que as propostas apresentem:", estilo_corpo)]],
+                       colWidths=[largura_util], style=TableStyle([
+                           ("BACKGROUND", (0, 0), (-1, -1), cor_base if is_inv else colors.HexColor("#D9D9D9")),
+                           ("GRID", (0, 0), (-1, -1), .5, colors.black),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                           ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)])))
+    textos_12 = [
         "12.1 - Logotipo da empresa timbrado com nome, endereço, CNPJ e telefone;",
         "12.2 - Data, assinatura e dados do responsável pela cotação;",
         "12.3 - Prazo de validade no mínimo 30 dias;",
         "12.4 - Prazo de entrega do item;",
         "12.5 - Especificações do item idênticas ao solicitado no Pedido de Cotação;",
         "12.6 - O valor do frete, imposto e taxas inclusos no preço unitário do item.",
-        "12.7 - O preço do medicamento deve estar abaixo do Preço Fábrica da CMED.",
+        ("12.7 - O preço do medicamento deve estar abaixo do Preço Fábrica da CMED." if is_inv else
+         "12.7 - Medicamento informar o GGREM e Nº Anvisa. O preço deve estar abaixo do limite da CMED."),
         "12.8 - Dados bancários para pagamento. Nota Fiscal de empresas do DF, acima de "
         "R$ 5.000,00 somente BRB.",
-    ]:
-        story.append(Paragraph(texto_12, estilo_corpo))
+    ]
+    for i in range(4):
+        proporcao = .48 if i < 2 else .29
+        estilo_direito = estilo_corpo_bold if i == 2 and not is_inv else (
+            estilo_corpo_red if origem_chave == "NECFM" and i in (1, 3) else estilo_corpo)
+        grade_12 = Table([[Paragraph(textos_12[i], estilo_corpo), Paragraph(textos_12[i+4], estilo_direito)]],
+                         colWidths=[largura_util * proporcao, largura_util * (1-proporcao)])
+        grade_12.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), .5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 1), ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(grade_12)
 
     story.append(Paragraph(
         "13 - Pedimos que as propostas sejam acompanhadas das Certidões Negativas válidas e/ou "
@@ -473,10 +525,13 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         "13.4 - Certidão Negativa de Débitos Trabalhistas do TST - Lei nº 12.440/2011, Art. 68, "
         "Inciso V, Lei 14.133/2021;",
         "13.5 - Certidão Negativa Correcional emitida pela CGU - Art. 91, § 4º da Lei 14.133/2021.",
-        "13.6 - Para venda de <b>MEDICAMENTOS</b> apresentar <b>AFE</b> para Distribuição de "
-        "Medicamentos - RDC 430/2020 ANVISA e <b>Alvará / Licença Sanitária.</b>",
     ]:
         story.append(Paragraph(texto, estilo_corpo))
+    if not is_inv and origem_chave != "NECFM":
+        story.append(Paragraph("13.6 - Para venda de <b>MEDICAMENTOS</b> apresentar <b>AFE</b> para Distribuição de "
+                               "Medicamentos - RDC 430/2020 ANVISA e <b>Alvará / Licença Sanitária.</b>", estilo_corpo))
+        story.append(Paragraph("14- O contratado deverá manter, durante toda a execução do contrato, as condições exigidas "
+                               "para a habilitação, Lei 14.133/2021 art. 92, XVI;", estilo_corpo))
     story.append(Spacer(1, 4))
 
     story.append(Paragraph(
@@ -486,7 +541,7 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
     if diretor_nome:
         story.append(Paragraph(
             f"Diretor(a) Administrativo(a)/SRSSU: {diretor_nome}, Matrícula: {diretor_matricula}",
-            ParagraphStyle("DiretorPed", parent=estilo_corpo_bold, alignment=TA_CENTER)))
+            ParagraphStyle("DiretorPed", parent=estilo_corpo_bold, fontName="Helvetica-Bold", fontSize=8.5, alignment=TA_CENTER)))
     story.append(Spacer(1, 0))
 
     if is_hrg:
@@ -494,14 +549,19 @@ def gerar_pdf_pedido_cotacao(caminho_pdf, codigo_cotacao, ano, operador, sei_tex
         rodape3 = "ÁREA ESPECIAL Nº 01, Lote Único - Setor Central GAMA/DF. CEP: 72.405-901"
         rodape4 = "CNPJ: 00.394.700/0006-12 - Fones: (61) 3449-7105"
     else:
-        rodape2 = "PDPAS/HRG - GEOF / Diretoria Administrativa / SRSSU / SES"
-        rodape3 = "ÁREA ESPECIAL Nº 01, Lote Único - Setor Central GAMA/DF. CEP: 72.405-901"
-        rodape4 = "CNPJ: 00.394.700/0006-12 - Fones: (61) 3449-7105"
+        rodape2 = "PDPAS / APS-SUL - GEOF / Diretoria Administrativa / SRSSU / SES"
+        rodape3 = ""
+        rodape4 = "CNPJ: 00.394.700/0051-77 - Fone: (61) 3449-7105"
     story.append(Paragraph(
-        "Brasília – Patrimônio Cultural da Humanidade<br/>" + rodape2 + "<br/>" + rodape3 +
+        "Brasília – Patrimônio Cultural da Humanidade<br/>" + rodape2 + ("<br/>" + rodape3 if rodape3 else "") +
         "<br/>" + rodape4, estilo_rodape))
 
-    doc.build(story)
+    def borda_pagina(canvas, documento):
+        canvas.saveState()
+        canvas.setLineWidth(.5)
+        canvas.rect(1, 1, A4[0]-2, A4[1]-2)
+        canvas.restoreState()
+    doc.build(story, onFirstPage=borda_pagina, onLaterPages=borda_pagina)
 
 
 # ----------------------------------------------------------------------
