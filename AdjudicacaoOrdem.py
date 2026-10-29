@@ -37,9 +37,9 @@ import customtkinter as ctk
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepInFrame
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 
 from GeradorCotacao import (
     centralizar_janela, maximizar_janela,
@@ -52,7 +52,7 @@ from GeradorCotacao import (
     gerar_objeto_automatico,
     converter_pdf_para_jpg, exibir_preview_pdf_jpg, montar_cabecalho_institucional,
 )
-from Mapa import carregar_fornecedores_completo
+from Mapa import carregar_fornecedores_completo, formatar_quantidade_proposta
 
 TITULOS_PESQUISA_PADRAO = ("Média¹ Mapa GDF", "Mediana² Painel Federal")
 STATUS_ITEM = {
@@ -658,13 +658,13 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     layout usado pela SES/PDPAS (cabeçalho, barra de título, tabela de
     1º/2º/3º colocado por item com saldo remanescente e descrição, tabela de
     empresas vencedoras e o texto de adjudicação/homologação). Formato
-    retrato, igual ao modelo original (uma única página).
+    retrato, com paginação conforme a quantidade de dados.
 
     As cores das barras de título seguem o tipo de planilha (extraídas dos
     modelos reais): APS = verde claro; APS INV = verde claro + amarelo;
     HRG = azul claro; HRG INV = azul claro + amarelo. Cada item pode ter um
     'vencedor_idx' (0=1º colocado, 1=2º, 2=3º) definido manualmente — o
-    colocado escolhido recebe um destaque cinza na tabela, e é ele (não
+    nome do colocado escolhido recebe um destaque cinza na tabela, e é ele (não
     necessariamente o de menor preço) que aparece na tabela de empresas
     vencedoras."""
     is_hrg = "HRG" in tipo_planilha.upper()
@@ -674,33 +674,36 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     sigla_comissao = "HRG" if is_hrg else "SRSSU"
 
     doc = SimpleDocTemplate(caminho_pdf, pagesize=A4,
-                             topMargin=1 * cm, bottomMargin=1 * cm,
-                             leftMargin=1.2 * cm, rightMargin=1.2 * cm)
+                             topMargin=1.7 * cm, bottomMargin=1 * cm,
+                             leftMargin=1.3 * cm, rightMargin=1.3 * cm)
     styles = getSampleStyleSheet()
-    largura_util = A4[0] - 2.4 * cm
+    largura_util = A4[0] - 2.6 * cm
 
-    estilo_barra = ParagraphStyle("Barra", parent=styles["Normal"], fontSize=12,
-                                  alignment=TA_CENTER, fontName="Helvetica-Bold")
-    estilo_objeto = ParagraphStyle("Objeto", parent=styles["Normal"], fontSize=10.5,
-                                   alignment=TA_CENTER, fontName="Helvetica-Bold", leading=13)
-    estilo_mapa_titulo = ParagraphStyle("MapaTitulo", parent=styles["Normal"], fontSize=14,
+    estilo_barra = ParagraphStyle("Barra", parent=styles["Normal"], fontSize=9, leading=11,
+                                  alignment=TA_CENTER, fontName="Times-Bold")
+    estilo_objeto = ParagraphStyle("Objeto", parent=styles["Normal"], fontSize=9,
+                                   alignment=TA_CENTER, fontName="Times-Bold", leading=11)
+    estilo_mapa_titulo = ParagraphStyle("MapaTitulo", parent=styles["Normal"], fontSize=11, leading=13,
                                         alignment=TA_CENTER, fontName="Helvetica-Bold")
     estilo_cel_item = ParagraphStyle("CelItem", parent=styles["Normal"], fontSize=7,
-                                     alignment=TA_CENTER, fontName="Helvetica-Bold", leading=10)
-    estilo_cel_normal = ParagraphStyle("CelNormal", parent=styles["Normal"], fontSize=6,
-                                       alignment=TA_CENTER, leading=8)
-    estilo_cel_bold = ParagraphStyle("CelBold", parent=styles["Normal"], fontSize=6,
-                                     alignment=TA_CENTER, fontName="Helvetica-Bold", leading=8)
+                                     alignment=TA_CENTER, fontName="Times-Bold", leading=9)
+    estilo_cel_normal = ParagraphStyle("CelNormal", parent=styles["Normal"], fontSize=6.7,
+                                       alignment=TA_CENTER, fontName="Times-Roman", leading=8)
+    estilo_cel_bold = ParagraphStyle("CelBold", parent=styles["Normal"], fontSize=6.7,
+                                     alignment=TA_CENTER, fontName="Times-Bold", leading=8)
+    estilo_cab_tabela = ParagraphStyle("CabTabelaMapa", parent=estilo_cel_bold, fontSize=5.7, leading=7)
+    estilo_codigo = ParagraphStyle("CodigoMapa", parent=estilo_cel_bold, fontSize=6, leading=7)
     estilo_desc = ParagraphStyle("Desc", parent=styles["Normal"], fontSize=7.5, leading=9,
-                                 fontName="Helvetica-Bold", alignment=TA_LEFT)
-    estilo_corpo = ParagraphStyle("Corpo", parent=styles["Normal"], fontSize=9, leading=12,
-                                  alignment=TA_JUSTIFY, firstLineIndent=26)
+                                 fontName="Times-Bold", alignment=TA_LEFT)
+    estilo_corpo = ParagraphStyle("Corpo", parent=styles["Normal"], fontSize=7, leading=9,
+                                  fontName="Times-Roman", alignment=TA_JUSTIFY, firstLineIndent=26)
+    estilo_pesquisa = ParagraphStyle("PesquisaMapa", parent=estilo_corpo, firstLineIndent=0)
     estilo_corpo_centro = ParagraphStyle("CorpoCentro", parent=estilo_corpo, alignment=TA_CENTER,
                                          firstLineIndent=0)
-    estilo_sei = ParagraphStyle("Sei", parent=styles["Normal"], fontSize=9, leading=12,
-                                textColor=colors.red, fontName="Helvetica-Bold", alignment=TA_CENTER)
-    estilo_rodape = ParagraphStyle("Rodape", parent=styles["Normal"], fontSize=7.5, leading=9.5,
-                                   alignment=TA_CENTER, fontName="Helvetica-Bold")
+    estilo_sei = ParagraphStyle("Sei", parent=styles["Normal"], fontSize=7.5, leading=9,
+                                textColor=colors.red, fontName="Times-Bold", alignment=TA_CENTER)
+    estilo_rodape = ParagraphStyle("Rodape", parent=styles["Normal"], fontSize=6.5, leading=8,
+                                   alignment=TA_RIGHT, fontName="Times-Bold")
 
     story = [
         montar_cabecalho_institucional(largura_util, [
@@ -709,8 +712,8 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
             "SUPERINTENDÊNCIA DA REGIÃO DE SAÚDE SUL",
             "DIRETORIA ADMINISTRATIVA",
             f"PROGRAMA DE DESCENTRALIZAÇÃO PROGRESSIVA DE AÇÕES DE SAÚDE - PDPAS{sufixo_letterhead}",
-        ]),
-        Spacer(1, 8),
+        ], tamanho_logo=1.45 * cm, tamanho_fonte=6, entrelinhas=7.5),
+        Spacer(1, 6),
     ]
 
     barra1 = Table([[Paragraph("SOLICITAÇÃO DE ADJUDICAÇÃO PARA O PEDIDO DE COTAÇÃO PDPAS",
@@ -733,29 +736,29 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         story.append(barra2)
     else:
         story.append(Paragraph(texto_barra2, estilo_barra))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     if objeto_titulo:
         story.append(Paragraph(objeto_titulo, estilo_objeto))
         story.append(Spacer(1, 6))
 
     story.append(Paragraph(f"MAPA COMPARATIVO {codigo_cotacao}/{ano}", estilo_mapa_titulo))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 3))
 
-    frac = [0.05, 0.085, 0.065, 0.05, 0.085, 0.065, 0.05, 0.085, 0.065, 0.05, 0.11, 0.11, 0.13]
+    frac = [0.05, 0.08, 0.08, 0.055, 0.08, 0.08, 0.055, 0.08, 0.08, 0.055, 0.095, 0.095, 0.115]
     col_widths = [largura_util * f for f in frac]
 
     linhas = [[
-        Paragraph("Item /<br/>Código", estilo_cel_bold),
-        Paragraph("1º Colocado /<br/>Unitário / Total", estilo_cel_bold), "",
-        Paragraph("Qtd./Und./<br/>Marca", estilo_cel_bold),
-        Paragraph("2º Colocado /<br/>Unitário / Total", estilo_cel_bold), "",
-        Paragraph("Qtd./Und./<br/>Marca", estilo_cel_bold),
-        Paragraph("3º Colocado /<br/>Unitário / Total", estilo_cel_bold), "",
-        Paragraph("Qtd./Und./<br/>Marca", estilo_cel_bold),
+        Paragraph("Item /<br/>Código", estilo_cab_tabela),
+        Paragraph("1º Colocado /<br/>Unitário / Total", estilo_cab_tabela), "",
+        Paragraph("Qtd./Und./<br/>Marca", estilo_cab_tabela),
+        Paragraph("2º Colocado /<br/>Unitário / Total", estilo_cab_tabela), "",
+        Paragraph("Qtd./Und./<br/>Marca", estilo_cab_tabela),
+        Paragraph("3º Colocado /<br/>Unitário / Total", estilo_cab_tabela), "",
+        Paragraph("Qtd./Und./<br/>Marca", estilo_cab_tabela),
     ]]
-    linhas[0] += [Paragraph(escape(titulo), estilo_cel_bold) for titulo in titulos_pesquisa]
-    linhas[0].append(Paragraph("MÉDIA", estilo_cel_bold))
+    linhas[0] += [Paragraph(escape(titulo), estilo_cab_tabela) for titulo in titulos_pesquisa]
+    linhas[0].append(Paragraph("MÉDIA", estilo_cab_tabela))
     estilos_extra = [
         ("SPAN", (1, 0), (2, 0)), ("SPAN", (4, 0), (5, 0)), ("SPAN", (7, 0), (8, 0)),
         ("BACKGROUND", (0, 0), (-1, 0), COR_CINZA_ADJ),
@@ -778,12 +781,12 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                                   1.6, colors.black))
 
         # ---- linha 1: nome do colocado / quantidade ----
-        linha1 = [Paragraph(str(item["numero_item"] or ""), estilo_cel_item)]
+        linha1 = [Paragraph(formatar_numero_inteiro(item["numero_item"]), estilo_cel_item)]
         for pos in range(3):
             if pos < len(top3):
                 p = top3[pos]
-                linha1 += [Paragraph(p["fornecedor"], estilo_cel_bold), "",
-                           Paragraph(str(p["quantidade"] or ""), estilo_cel_normal)]
+                linha1 += [Paragraph(escape(p["fornecedor"]), estilo_cel_bold), "",
+                           Paragraph(formatar_quantidade_proposta(p["quantidade"]), estilo_cel_normal)]
             else:
                 if cancelado:
                     texto_vazio = "CANCELADO"
@@ -820,7 +823,7 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         linha_idx += 1
 
         # ---- linha 3: código / prazo / marca ----
-        linha3 = [Paragraph(item["codigo"], estilo_cel_bold)]
+        linha3 = [Paragraph(escape(item["codigo"]), estilo_codigo)]
         for pos in range(3):
             linha3.append(Paragraph("Prazo (dias)", estilo_cel_bold))
             if pos < len(top3):
@@ -833,9 +836,6 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         linhas.append(linha3)
         estilos_extra += [
             ("BACKGROUND", (0, linha_idx), (0, linha_idx), cor_bloco),
-            ("BACKGROUND", (1, linha_idx), (1, linha_idx), cor_bloco),
-            ("BACKGROUND", (4, linha_idx), (4, linha_idx), cor_bloco),
-            ("BACKGROUND", (7, linha_idx), (7, linha_idx), cor_bloco),
         ]
         linha_idx += 1
 
@@ -844,8 +844,8 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         descricao_1_linha = truncar_em_palavra((item["descricao"] or "").strip(), 60)
         if descricao_1_linha and len(descricao_1_linha) < len((item["descricao"] or "").strip()):
             descricao_1_linha += "..."
-        linha4 = [Paragraph("Saldo remanescente", estilo_cel_bold), "", "",
-                  Paragraph(saldo_texto, estilo_cel_bold),
+        linha4 = [Paragraph("Saldo remanescente", estilo_cel_bold), "",
+                  Paragraph(saldo_texto, estilo_cel_bold), "",
                   Paragraph(descricao_1_linha, estilo_desc), "", "", "", "", ""]
         linha4 += [Paragraph("Preço de referência", estilo_cel_bold), "",
                    Paragraph(formatar_pesquisa(ref.get("minimo")), estilo_cel_bold)]
@@ -853,40 +853,43 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
                           ("BACKGROUND", (10, linha_idx), (12, linha_idx), cor_base)]
         linhas.append(linha4)
         estilos_extra += [
-            ("SPAN", (0, linha_idx), (2, linha_idx)), ("SPAN", (4, linha_idx), (9, linha_idx)),
-            ("BACKGROUND", (0, linha_idx), (2, linha_idx), cor_bloco),
+            ("SPAN", (0, linha_idx), (1, linha_idx)), ("SPAN", (2, linha_idx), (3, linha_idx)),
+            ("SPAN", (4, linha_idx), (9, linha_idx)),
+            ("BACKGROUND", (0, linha_idx), (1, linha_idx), cor_bloco),
         ]
 
         # ---- destaque do vencedor (não é sempre o 1º colocado — pode ter
         # sido alterado manualmente, ex.: desistência do menor preço) ----
         vencedor_pos = item.get("vencedor_idx")
-        if vencedor_pos is not None and vencedor_pos < len(top3):
+        if vencedor_pos is not None and 0 <= vencedor_pos < len(top3):
             col_inicio = 1 + 3 * vencedor_pos
             estilos_extra.append(
-                ("BACKGROUND", (col_inicio, linha_topo_bloco), (col_inicio + 2, linha_idx - 1),
+                ("BACKGROUND", (col_inicio, linha_topo_bloco), (col_inicio + 1, linha_topo_bloco),
                  COR_VENCEDOR_ADJ))
 
         linha_idx += 1
 
-    tabela = Table(linhas, colWidths=col_widths)
+    tabela = Table(linhas, colWidths=col_widths, repeatRows=1)
     tabela.setStyle(TableStyle(estilos_extra + [
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        *[("NOSPLIT", (0, i), (-1, i+3)) for i in range(1, len(linhas), 4)],
     ]))
     story.append(tabela)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph(escape(texto_pesquisa).replace("\n", "<br/>"), estilo_corpo))
+    story.append(Paragraph(escape(texto_pesquisa).replace("\n", "<br/>"), estilo_pesquisa))
     story.append(Spacer(1, 6))
 
     grupos_vencedores = montar_declaracao_vencedores(mapa_itens)
     if grupos_vencedores:
-        dados_decl = [["Item(ns)", "Empresa"]]
+        dados_decl = [[Paragraph("Item(ns)", estilo_cel_bold), Paragraph("Empresa", estilo_cel_bold)]]
         for numeros, vencedor in grupos_vencedores:
-            dados_decl.append([", ".join(str(n) for n in numeros), vencedor])
-        tabela_decl = Table(dados_decl, colWidths=[largura_util * 0.15, largura_util * 0.85])
+            dados_decl.append([Paragraph(", ".join(formatar_numero_inteiro(n) for n in numeros), estilo_cel_normal),
+                               Paragraph(escape(vencedor), estilo_cel_normal)])
+        tabela_decl = Table(dados_decl, colWidths=[largura_util * 0.20, largura_util * 0.80], repeatRows=1)
         tabela_decl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), COR_CINZA_ADJ),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -952,12 +955,12 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
     if linha_rodape3:
         linhas_rodape.append(linha_rodape3)
     linhas_rodape.append(linha_rodape4)
-    story.append(Paragraph("<br/>".join(linhas_rodape), estilo_rodape))
+    story.append(Table([[Paragraph("<br/>".join(linhas_rodape), estilo_rodape)]], colWidths=[largura_util],
+                       style=TableStyle([("LINEABOVE", (0, 0), (-1, -1), .5, colors.grey),
+                                         ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                         ("RIGHTPADDING", (0, 0), (-1, -1), 0)])))
 
-    if len(mapa_itens) <= 12:
-        doc.build([KeepInFrame(doc.width, doc.height - 12, story, mode="shrink")])
-    else:
-        doc.build(story)
+    doc.build(story)
 
 
 # ----------------------------------------------------------------------
