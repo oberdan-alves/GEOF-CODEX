@@ -685,6 +685,7 @@ class MapaMixin:
                                               placeholder_text="DD/MM/AAAA")
         self.wizard_entry_data.pack(side="left")
         self.wizard_entry_data.bind("<KeyRelease>", self._on_data_proposta_digitada)
+        self._configurar_navegacao_campo_proposta(self.wizard_entry_data)
         data_inicial = (dados_existentes or {}).get("data_proposta") or (
             getattr(self, "_data_proposta_padrao", "") or date.today().strftime("%d/%m/%Y"))
         self.wizard_entry_data.insert(0, data_inicial)
@@ -780,7 +781,7 @@ class MapaMixin:
             self._entradas_item_atual.append(registro)
             self._pintar_linha_proposta(i, False)
             for campo in ("entry_qtd", "entry_unit", "entry_marca", "entry_prazo"):
-                registro[campo].bind("<FocusIn>", lambda e, idx=i: self._ativar_linha_proposta(idx))
+                self._configurar_navegacao_campo_proposta(registro[campo], i)
                 registro[campo].bind("<FocusOut>",
                     lambda e, idx=i, chave=campo: self._sair_linha_proposta(idx, chave))
 
@@ -806,6 +807,25 @@ class MapaMixin:
         ctk.CTkButton(self.wizard_rodape, text="Fechar", font=("Segoe UI", 15, "bold"), height=34,
                       fg_color="#7a2626", command=self._fechar_wizard_e_gerar_relacao
                       ).pack(side="right", padx=4)
+
+    def _configurar_navegacao_campo_proposta(self, entry, idx=None):
+        def selecionar(event=None):
+            # Aguarda o posicionamento do cursor pelo clique antes de selecionar.
+            entry.after_idle(lambda: entry.select_range(0, "end") if entry.winfo_exists() else None)
+
+        def receber_foco(event=None):
+            if idx is not None:
+                self._ativar_linha_proposta(idx)
+            selecionar()
+
+        def avancar(event):
+            event.widget.tk_focusNext().focus_set()
+            return "break"
+
+        entry.bind("<FocusIn>", receber_foco)
+        entry.bind("<ButtonRelease-1>", selecionar)
+        entry.bind("<Return>", avancar)
+        entry.bind("<KP_Enter>", avancar)
 
     def _pintar_linha_proposta(self, idx, ativo):
         reg = self._entradas_item_atual[idx]

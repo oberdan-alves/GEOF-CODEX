@@ -78,6 +78,28 @@ class CadastroPropostasTest(unittest.TestCase):
         self.assertTrue(all(w.parent is titulo.parent for w in valores))
         self.assertTrue(all(w.grid_config['column'] == titulo.grid_config['column'] for w in valores))
 
+    def test_selecao_no_foco_e_clique_e_enter_equivale_ao_tab(self):
+        from types import SimpleNamespace
+        app = Mapa.MapaMixin()
+        app._ativar_linha_proposta = Mock()
+        campo = Mock()
+        campo.after_idle.side_effect = lambda callback: callback()
+        app._configurar_navegacao_campo_proposta(campo, 2)
+        eventos = {c.args[0]: c.args[1] for c in campo.bind.call_args_list}
+        eventos['<FocusIn>']()
+        app._ativar_linha_proposta.assert_called_once_with(2)
+        campo.select_range.assert_called_once_with(0, 'end')
+        eventos['<ButtonRelease-1>']()
+        self.assertEqual(campo.select_range.call_count, 2)
+        interno = Mock()
+        for tecla in ('<Return>', '<KP_Enter>'):
+            self.assertEqual(eventos[tecla](SimpleNamespace(widget=interno)), 'break')
+        self.assertEqual(interno.tk_focusNext.return_value.focus_set.call_count, 2)
+        self.assertNotIn('<Tab>', eventos)
+        campo.winfo_exists.return_value = False
+        eventos['<ButtonRelease-1>']()
+        self.assertEqual(campo.select_range.call_count, 2)
+
     def test_destaque_escuro_e_negrito_acompanham_edicao(self):
         app = self.criar_formulario()
         primeiro, segundo, terceiro = app._entradas_item_atual
