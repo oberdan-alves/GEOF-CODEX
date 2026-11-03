@@ -84,6 +84,18 @@ def formatar_unitario_proposta(valor):
 # ----------------------------------------------------------------------
 # LEITURA DA ABA "Fornecedores"
 # ----------------------------------------------------------------------
+def calcular_total_proposta(quantidade, unitario):
+    """Multiplica em decimal, sem arredondar cada item para centavos."""
+    return Decimal(str(quantidade or 0)) * Decimal(str(unitario or 0))
+
+
+def formatar_total_proposta(valor):
+    """Exibe ao menos duas casas e preserva as casas significativas do total."""
+    numero = Decimal(str(valor or 0))
+    casas = max(2, -numero.normalize().as_tuple().exponent)
+    return f"{numero:,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def carregar_fornecedores(caminho_arquivo):
     """Lê nome/código na coluna A e CNPJ na coluna F da aba 'Fornecedores'.
     Devolve texto_completo, nome, nome_normalizado, codigo e cnpj."""
@@ -232,7 +244,7 @@ def montar_ranking_itens(mapa_fornecedores, fornecedores_texto_completo, excluid
                 "fornecedor": texto_completo,
                 "quantidade": item.get("quantidade"),
                 "unitario": unitario,
-                "total": item.get("total"),
+                "total": float(calcular_total_proposta(item.get("quantidade"), unitario)),
                 "prazo": item.get("prazo"),
                 "marca": item.get("marca"),
             })
@@ -283,8 +295,8 @@ def gerar_pdf_ranking(caminho_pdf, codigo_cotacao, ano, ranking):
         for posicao, proposta in enumerate(info["propostas"], start=1):
             dados_tabela.append([
                 f"{posicao}º COLOCADO", "", proposta["fornecedor"],
-                formatar_quantidade_proposta(proposta["quantidade"]), formatar_moeda(proposta["unitario"]),
-                formatar_moeda(proposta["total"]),
+                formatar_quantidade_proposta(proposta["quantidade"]), formatar_unitario_proposta(proposta["unitario"]),
+                formatar_total_proposta(proposta["total"]),
                 f'{proposta["prazo"]} dias' if proposta["prazo"] else "",
                 proposta["marca"] or "",
             ])
@@ -692,7 +704,7 @@ class MapaMixin:
         larguras = [50, 90, 340, 50, 50, 115, 145, 145, 165, 75]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
             self.wizard_scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
-            ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 15, "bold"),
+            ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 17, "bold"),
                          text_color=COR_TEXTO, width=w).grid(row=0, column=i, padx=2, pady=4)
 
         itens_salvos = {it["codigo"]: it for it in dados_existentes["itens"]} if dados_existentes else {}
@@ -716,35 +728,35 @@ class MapaMixin:
             faixa.grid(row=linha_idx, column=0, rowspan=2, columnspan=10, sticky="nsew")
             inicio_widgets = len(linha.winfo_children())
 
-            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=("Segoe UI", 16), width=45
-                         ).grid(row=linha_idx, pady=(4, 0), column=0, padx=4)
-            ctk.CTkLabel(linha, text=codigo, font=("Segoe UI", 16), width=80).grid(row=linha_idx, pady=(4, 0), column=1, padx=2)
-            ctk.CTkLabel(linha, text=descricao[:55], font=("Segoe UI", 16), width=340, wraplength=340,
-                         anchor="w", justify="left").grid(row=linha_idx, pady=(4, 0), column=2, padx=2, sticky="w")
-            ctk.CTkLabel(linha, text=un, font=("Segoe UI", 16), width=40).grid(row=linha_idx, pady=(4, 0), column=3, padx=2)
-            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=("Segoe UI", 16), width=40
-                         ).grid(row=linha_idx, pady=(4, 0), column=4, padx=2)
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=("Segoe UI", 18), width=45
+                         ).grid(row=linha_idx, pady=(4, 0), column=0, padx=4, sticky="n")
+            ctk.CTkLabel(linha, text=codigo, font=("Segoe UI", 18), width=80).grid(row=linha_idx, pady=(4, 0), column=1, padx=2, sticky="n")
+            ctk.CTkLabel(linha, text=descricao[:55], font=("Segoe UI", 18), width=340, wraplength=340,
+                         anchor="w", justify="left").grid(row=linha_idx, pady=(4, 0), column=2, padx=2, sticky="nw")
+            ctk.CTkLabel(linha, text=un, font=("Segoe UI", 18), width=40).grid(row=linha_idx, pady=(4, 0), column=3, padx=2, sticky="n")
+            ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=("Segoe UI", 18), width=40
+                         ).grid(row=linha_idx, pady=(4, 0), column=4, padx=2, sticky="n")
 
-            entry_qtd = ctk.CTkEntry(linha, width=115, height=34, font=("Segoe UI", 16))
-            entry_qtd.grid(row=linha_idx, pady=(4, 0), column=5, padx=2)
+            entry_qtd = ctk.CTkEntry(linha, width=115, height=34, font=("Segoe UI", 18))
+            entry_qtd.grid(row=linha_idx, pady=(4, 0), column=5, padx=2, sticky="n")
             entry_qtd.insert(0, formatar_quantidade_proposta(salvo.get("quantidade", qtd_cotada)))
 
-            entry_unit = ctk.CTkEntry(linha, width=145, height=34, font=("Segoe UI", 16),
+            entry_unit = ctk.CTkEntry(linha, width=145, height=34, font=("Segoe UI", 18),
                                       placeholder_text="0,0000")
-            entry_unit.grid(row=linha_idx, pady=(4, 0), column=6, padx=2)
+            entry_unit.grid(row=linha_idx, pady=(4, 0), column=6, padx=2, sticky="n")
             if salvo.get("unitario") is not None:
                 entry_unit.insert(0, formatar_unitario_proposta(salvo["unitario"]))
 
-            label_total = ctk.CTkLabel(linha, text=formatar_moeda(salvo.get("total", 0)),
-                                       font=("Segoe UI", 15, "bold"), width=145)
-            label_total.grid(row=linha_idx, pady=(4, 0), column=7, padx=2)
+            label_total = ctk.CTkLabel(linha, text=formatar_total_proposta(salvo.get("total", 0)),
+                                       font=("Segoe UI", 17, "bold"), width=145)
+            label_total.grid(row=linha_idx, pady=(4, 0), column=7, padx=2, sticky="n")
 
-            entry_marca = ctk.CTkEntry(linha, width=165, height=34, font=("Segoe UI", 16))
-            entry_marca.grid(row=linha_idx, pady=(4, 0), column=8, padx=2)
+            entry_marca = ctk.CTkEntry(linha, width=165, height=34, font=("Segoe UI", 18))
+            entry_marca.grid(row=linha_idx, pady=(4, 0), column=8, padx=2, sticky="n")
             entry_marca.insert(0, salvo.get("marca", ""))
 
-            entry_prazo = ctk.CTkEntry(linha, width=75, height=34, font=("Segoe UI", 16))
-            entry_prazo.grid(row=linha_idx, pady=(4, 0), column=9, padx=2)
+            entry_prazo = ctk.CTkEntry(linha, width=75, height=34, font=("Segoe UI", 18))
+            entry_prazo.grid(row=linha_idx, pady=(4, 0), column=9, padx=2, sticky="n")
             entry_prazo.insert(0, formatar_quantidade_proposta(salvo.get("prazo", "")))
 
             label_alerta = ctk.CTkLabel(self.wizard_scroll, text="", height=18, font=("Segoe UI", 13, "bold"),
@@ -798,11 +810,11 @@ class MapaMixin:
         reg["faixa"].configure(fg_color=fundo, border_color="#8c8c8c" if ativo else fundo)
         for campo in ("entry_qtd", "entry_unit", "entry_marca", "entry_prazo"):
             reg[campo].configure(bg_color=fundo, text_color=texto,
-                                 font=("Segoe UI", 16, "bold" if ativo else "normal"))
+                                 font=("Segoe UI", 18, "bold" if ativo else "normal"))
         for label in reg["labels"]:
             label.configure(fg_color=fundo)
             if label is not reg["label_alerta"]:
-                label.configure(font=("Segoe UI", 16,
+                label.configure(font=("Segoe UI", 18,
                     "bold" if ativo or label is reg["label_total"] else "normal"))
             if label is not reg["label_alerta"] and not (label is reg["label_total"] and reg["excedido"]):
                 label.configure(text_color=texto)
@@ -879,8 +891,8 @@ class MapaMixin:
         reg = self._entradas_item_atual[idx]
         quantidade = numero_proposta(reg["entry_qtd"].get())
         unitario = numero_proposta(reg["entry_unit"].get())
-        total = (quantidade or 0) * (unitario or 0)
-        reg["label_total"].configure(text=formatar_moeda(total))
+        total = calcular_total_proposta(quantidade, unitario)
+        reg["label_total"].configure(text=formatar_total_proposta(total))
 
         saldo = self.saldos_bd_atual.get(normalizar_texto(reg["codigo"]))
         excedido = saldo is not None and total > saldo and total > 0
@@ -936,7 +948,7 @@ class MapaMixin:
                 self._formatar_campo_proposta(idx, campo)
             quantidade = numero_proposta(reg["entry_qtd"].get())
             unitario = numero_proposta(reg["entry_unit"].get())
-            total = round((quantidade or 0) * (unitario or 0), 2)
+            total = float(calcular_total_proposta(quantidade, unitario))
             prazo_texto = reg["entry_prazo"].get().strip()
             itens_calculados.append({
                 "numero_item": reg.get("numero_item"),
@@ -981,27 +993,27 @@ class MapaMixin:
         scroll = ctk.CTkScrollableFrame(self.wizard_conteudo, fg_color="#161616", height=410)
         scroll.pack(fill="both", expand=True, padx=14, pady=(0, 4))
 
-        cabecalho = ctk.CTkFrame(scroll, fg_color="#1b1b1b")
-        cabecalho.pack(fill="x", pady=(0, 4))
+        cabecalho = scroll
         titulos = ["ITEM", "CÓDIGO", "DESCRIÇÃO", "UN", "QTD", "QUANTIDADE", "UNITÁRIO", "TOTAL",
                    "MARCA", "PRAZO"]
-        larguras = [45, 80, 280, 40, 40, 90, 90, 100, 130, 55]
+        larguras = [50, 90, 340, 50, 50, 115, 145, 145, 165, 75]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
-            ctk.CTkLabel(cabecalho, text=t, font=("Segoe UI", 11, "bold"),
+            scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
+            ctk.CTkLabel(cabecalho, text=t, font=("Segoe UI", 17, "bold"),
                          text_color=COR_TEXTO, width=w).grid(row=0, column=i, padx=2, pady=4)
 
-        total_geral = 0
-        for item in itens_com_valor:
-            linha = ctk.CTkFrame(scroll, fg_color="transparent")
-            linha.pack(fill="x", pady=1)
+        total_geral = Decimal("0")
+        for linha_idx, item in enumerate(itens_com_valor, start=1):
+            linha = scroll
             valores = [formatar_quantidade_proposta(item.get("numero_item")), item["codigo"], item["descricao"][:55],
                        item["un"], formatar_quantidade_proposta(item["qtd_cotada"]), formatar_quantidade_proposta(item["quantidade"]),
-                       formatar_unitario_proposta(item["unitario"] or 0), formatar_moeda(item["total"]),
+                       formatar_unitario_proposta(item["unitario"] or 0), formatar_total_proposta(item["total"]),
                        item["marca"], str(item["prazo"] or "")]
             for i, (v, w) in enumerate(zip(valores, larguras)):
-                ctk.CTkLabel(linha, text=v, font=FONTE_TABELA, width=w,
-                             anchor="w" if i == 2 else "center").grid(row=0, column=i, padx=2)
-            total_geral += item["total"] or 0
+                ctk.CTkLabel(linha, text=v, font=("Segoe UI", 18), width=w,
+                             wraplength=w,
+                             anchor="w" if i == 2 else "center").grid(row=linha_idx, column=i, padx=2, pady=4, sticky="n")
+            total_geral += calcular_total_proposta(item["quantidade"], item["unitario"])
 
         if itens_ocultos:
             ctk.CTkLabel(self.wizard_conteudo,
@@ -1010,7 +1022,7 @@ class MapaMixin:
                          font=("Segoe UI", 11), text_color=COR_TEXTO_SEC
                          ).pack(anchor="w", padx=16, pady=(0, 2))
 
-        ctk.CTkLabel(self.wizard_conteudo, text=f"TOTAL GERAL DA PROPOSTA: {formatar_moeda(total_geral)}",
+        ctk.CTkLabel(self.wizard_conteudo, text=f"TOTAL GERAL DA PROPOSTA: {formatar_total_proposta(total_geral)}",
                      font=("Segoe UI", 15, "bold"), text_color="#8ee08e"
                      ).pack(anchor="e", padx=16, pady=(4, 10))
 
@@ -1169,7 +1181,7 @@ class MapaMixin:
                 ctk.CTkLabel(scroll, text=f"{pos}º COLOCADO", font=fonte, text_color=cor
                              ).grid(row=linha_idx, column=0, columnspan=2, padx=2)
                 valores = [p["fornecedor"], formatar_quantidade_proposta(p["quantidade"]),
-                           formatar_moeda(p["unitario"]), formatar_moeda(p["total"]),
+                           formatar_unitario_proposta(p["unitario"]), formatar_total_proposta(p["total"]),
                            f'{p["prazo"]}d' if p["prazo"] else "", p["marca"] or ""]
                 for i, (v, w) in enumerate(zip(valores, larguras[2:]), 2):
                     ctk.CTkLabel(scroll, text=v, font=fonte, text_color=cor, width=w,

@@ -52,7 +52,8 @@ from GeradorCotacao import (
     gerar_objeto_automatico,
     converter_pdf_para_jpg, exibir_preview_pdf_jpg, montar_cabecalho_institucional,
 )
-from Mapa import carregar_fornecedores_completo, formatar_quantidade_proposta
+from Mapa import (carregar_fornecedores_completo, formatar_quantidade_proposta,
+                  calcular_total_proposta, formatar_total_proposta)
 
 TITULOS_PESQUISA_PADRAO = ("Média¹ Mapa GDF", "Mediana² Painel Federal")
 OPCOES_PUBLICACAO = [f"{i}ª PUBLICAÇÃO" for i in range(1, 6)]
@@ -612,7 +613,7 @@ def montar_mapa_itens_completo(linhas_resultado, mapa_fornecedores, fornecedores
                     "fornecedor_chave": normalizar_texto(nome_forn),
                     "quantidade": it.get("quantidade"),
                     "unitario": unitario,
-                    "total": it.get("total"),
+                    "total": float(calcular_total_proposta(it.get("quantidade"), unitario)),
                     "prazo": it.get("prazo"),
                     "marca": it.get("marca"),
                 })
@@ -825,8 +826,8 @@ def gerar_pdf_mapa_comparativo(caminho_pdf, codigo_cotacao, ano, mapa_itens, obj
         for pos in range(3):
             if pos < len(top3):
                 p = top3[pos]
-                linha2 += [Paragraph(formatar_moeda(p["unitario"]), estilo_cel_normal),
-                           Paragraph(formatar_moeda(p["total"]), estilo_cel_normal),
+                linha2 += [Paragraph("R$ " + formatar_total_proposta(p["unitario"]), estilo_cel_normal),
+                           Paragraph("R$ " + formatar_total_proposta(p["total"]), estilo_cel_normal),
                            Paragraph(item["un"], estilo_cel_normal)]
             else:
                 linha2 += ["", "", ""]
@@ -1088,16 +1089,16 @@ def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, 
     # ---- tabela de itens vencidos por este fornecedor ----
     dados_tabela = [["Item", "Cod.", "Descrição", "Qtd.", "Und.", "Valor Unitário",
                      "Valor Total", "Prazo de Entrega"]]
-    total_geral = 0
+    total_geral = calcular_total_proposta(0, 0)
     for item, proposta in itens_vencidos:
         dados_tabela.append([
             str(item["numero_item"] or ""), item["codigo"],
             Paragraph(item["descricao"] or "", estilo_cel),
             str(proposta["quantidade"] or ""), item["un"],
-            formatar_moeda(proposta["unitario"]), formatar_moeda(proposta["total"]),
+            "R$ " + formatar_total_proposta(proposta["unitario"]), "R$ " + formatar_total_proposta(calcular_total_proposta(proposta["quantidade"], proposta["unitario"])),
             f'{proposta["prazo"]} dias úteis.' if proposta["prazo"] else "",
         ])
-        total_geral += proposta["total"] or 0
+        total_geral += calcular_total_proposta(proposta["quantidade"], proposta["unitario"])
 
     tabela_itens = Table(
         dados_tabela,
@@ -1114,7 +1115,7 @@ def gerar_pdf_ordem_compra(caminho_pdf, codigo_cotacao, ano, tr_numero, origem, 
     ]))
     story.append(tabela_itens)
 
-    tabela_total = Table([["TOTAL", "", formatar_moeda(total_geral)]],
+    tabela_total = Table([["TOTAL", "", "R$ " + formatar_total_proposta(total_geral)]],
                          colWidths=[3 * cm, largura_util - 3 * cm - 3.5 * cm, 3.5 * cm])
     tabela_total.setStyle(TableStyle([
         ("SPAN", (0, 0), (1, 0)),

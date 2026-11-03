@@ -24,6 +24,20 @@ class CadastroPropostasTest(unittest.TestCase):
         self.assertEqual(Mapa.numero_proposta('1.234,5678'), 1234.5678)
         self.assertIsNone(Mapa.numero_proposta('nan'))
 
+    def test_totais_sem_residuo_e_cadastro_antigo(self):
+        from decimal import Decimal
+        from AdjudicacaoOrdem import montar_mapa_itens_completo
+        total = Mapa.calcular_total_proposta(3, 1.2345)
+        self.assertEqual(total, Decimal('3.7035'))
+        self.assertEqual(Mapa.formatar_total_proposta(total * 3), '11,1105')
+        self.assertEqual(Mapa.calcular_total_proposta(0.1, 0.2), Decimal('0.02'))
+        self.assertEqual(Mapa.formatar_total_proposta(1234), '1.234,00')
+        fornecedores = {'A': {'itens': [dict(codigo='1', quantidade=3, unitario=1.2345, total=3.70)]}}
+        ranking = Mapa.montar_ranking_itens(fornecedores, {})
+        self.assertEqual(ranking[0][1]['propostas'][0]['total'], 3.7035)
+        mapa = montar_mapa_itens_completo([dict(CODIGO='1')], fornecedores, {}, {})
+        self.assertEqual(mapa[0]['propostas'][0]['total'], 3.7035)
+
     def criar_formulario(self):
         app = Mapa.MapaMixin()
         app.wizard_conteudo, app.wizard_rodape, app.wizard_cabecalho = Campo(), Campo(), Campo()
@@ -45,6 +59,25 @@ class CadastroPropostasTest(unittest.TestCase):
         campo.delete(0, 'end')
         campo.insert(0, valor)
 
+    def test_previa_soma_produtos_e_alinha_colunas(self):
+        app = self.criar_formulario()
+        for registro in app._entradas_item_atual:
+            self.escrever(registro['entry_qtd'], '3')
+            self.escrever(registro['entry_unit'], '1,2345')
+        Widget.criados = []
+        with ExitStack() as stack:
+            for nome in ('CTkFrame', 'CTkScrollableFrame', 'CTkLabel', 'CTkEntry', 'CTkButton'):
+                stack.enter_context(patch.object(Mapa.ctk, nome, Campo))
+            app._salvar_formulario_atual()
+        total = next(w for w in Widget.criados
+                     if w.kwargs.get('text', '').startswith('TOTAL GERAL DA PROPOSTA:'))
+        self.assertEqual(total.kwargs['text'], 'TOTAL GERAL DA PROPOSTA: 11,1105')
+        titulo = next(w for w in Widget.criados if w.kwargs.get('text') == 'TOTAL')
+        valores = [w for w in Widget.criados if w.kwargs.get('text') == '3,7035']
+        self.assertEqual(len(valores), 3)
+        self.assertTrue(all(w.parent is titulo.parent for w in valores))
+        self.assertTrue(all(w.grid_config['column'] == titulo.grid_config['column'] for w in valores))
+
     def test_destaque_escuro_e_negrito_acompanham_edicao(self):
         app = self.criar_formulario()
         primeiro, segundo, terceiro = app._entradas_item_atual
@@ -55,12 +88,12 @@ class CadastroPropostasTest(unittest.TestCase):
         self.assertEqual(primeiro['faixa'].kwargs['fg_color'], '#404040')
         self.assertEqual(primeiro['faixa'].kwargs['border_color'], '#8c8c8c')
         self.assertTrue(all(label.kwargs['fg_color'] == '#404040' for label in primeiro['labels']))
-        self.assertEqual(primeiro['entry_marca'].kwargs['font'], ('Segoe UI', 16, 'bold'))
+        self.assertEqual(primeiro['entry_marca'].kwargs['font'], ('Segoe UI', 18, 'bold'))
         self.assertEqual(primeiro['entry_marca'].kwargs['text_color'], '#ffffff')
-        self.assertTrue(all(label.kwargs['font'] == ('Segoe UI', 16, 'bold')
+        self.assertTrue(all(label.kwargs['font'] == ('Segoe UI', 18, 'bold')
                             for label in primeiro['labels'] if label is not primeiro['label_alerta']))
         segundo['entry_unit'].kwargs['<FocusIn>'](None)
-        self.assertEqual(primeiro['entry_marca'].kwargs['font'], ('Segoe UI', 16, 'normal'))
+        self.assertEqual(primeiro['entry_marca'].kwargs['font'], ('Segoe UI', 18, 'normal'))
         self.assertEqual(primeiro['faixa'].kwargs['fg_color'], primeiro['fundo'])
         self.escrever(segundo['entry_unit'], '1.23456')
         segundo['entry_unit'].kwargs['<FocusOut>'](None)
@@ -81,7 +114,7 @@ class CadastroPropostasTest(unittest.TestCase):
         self.assertEqual(terceiro['entry_unit'].get(), '1,2345')
         self.assertEqual(segundo['entry_marca'].get(), 'Marca original')
         self.assertEqual(segundo['entry_prazo'].get(), '10')
-        self.assertEqual(segundo['label_total'].kwargs['text'], 'R$ 3,70')
+        self.assertEqual(segundo['label_total'].kwargs['text'], '3,7035')
         self.assertEqual(app.wizard_entry_data.get(), '14/10/2026')
         app._desfazer_repeticao()
         self.assertEqual(segundo['entry_unit'].get(), '8,7654')
@@ -106,7 +139,7 @@ class CadastroPropostasTest(unittest.TestCase):
         app._salvar_formulario_atual()
         self.assertEqual(registro['entry_unit'].get(), '12,3456')
         self.assertEqual(app._dados_form_atual['itens'][0]['unitario'], 12.3456)
-        self.assertEqual(app._dados_form_atual['itens'][0]['total'], 12.35)
+        self.assertEqual(app._dados_form_atual['itens'][0]['total'], 12.3456)
         app._renderizar_preview_fornecedor.assert_called_once()
 
 
