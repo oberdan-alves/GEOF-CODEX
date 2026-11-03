@@ -744,6 +744,72 @@ def exibir_preview_pdf_jpg(parent, caminho_jpg, titulo="Pré-visualização"):
 # final AppCotacao (já com todos os mixins) foi instanciada; o mesmo padrão
 # já é usado em _montar_grupos_botoes, que referencia botões de outros
 # mixins (self.acao_criar_pasta_cotacao etc.) do mesmo jeito.
+DICAS_BOTOES_CONTROLE = {
+    "⚙ Contatos\nda Ordem": "Configura os contatos que aparecem na Ordem de Compra.",
+    "🔄 Reset /\nAtualizar": "Atualiza os itens, SIS e SEI da cotação ativa com os dados da planilha.",
+    "Limpar\nCotações": "Limpa as caixas de cotações e os dados exibidos na consulta atual.",
+    "CONSULTAR COTAÇÃO": "Consulta os itens e os dados da cotação ativa na planilha selecionada.",
+    "CONSULTAR MATRIX": "Consulta as cotações disponíveis na planilha Matrix selecionada.",
+    "🗑": "Exclui o operador selecionado do cadastro de operadores.",
+    "Procurar...": "Seleciona a pasta de trabalho GEOF.",
+    "CRIAR PASTA COTAÇÃO": "Cria a pasta da cotação ativa e a subpasta de propostas dos fornecedores.",
+    "PEDIDO": "Gera o Pedido de Cotação com os itens da cotação ativa.",
+    "AJUSTE DO PEDIDO": "Permite cancelar itens ou acrescentar observações ao Pedido de Cotação.",
+    "ACESSAR PROPOSTAS": "Abre a pasta das propostas dos fornecedores da cotação ativa.",
+    "LISTAR EMPRESAS": "Identifica e lista as empresas a partir dos arquivos de propostas.",
+    "INCLUIR EMPRESAS MAPA": "Abre o cadastro das propostas por fornecedor para informar valores, marcas e prazos.",
+    "CARREGAR EMPRESAS MAPA": "Carrega o cadastro de propostas já salvo para a cotação ativa.",
+    "ADJUDICAÇÃO": "Abre a análise dos itens, pesquisas e vencedores para gerar o Mapa Comparativo.",
+    "ORDEM": "Gera as Ordens de Compra dos fornecedores vencedores da adjudicação.",
+    "SALVAR": "Salva as configurações atuais da tela. A função adicional do 3º Passo ainda está em desenvolvimento.",
+    "E-mail Cotação": "Prepara o e-mail de solicitação de cotação para os fornecedores.",
+    "E-mail Ordem": "Prepara o e-mail de envio da Ordem de Compra ao fornecedor.",
+    "FERIADOS": "Gerencia os feriados usados no cálculo dos prazos em dias úteis.",
+}
+
+
+class DicaBotao:
+    """Dica sem foco, com texto consultado a cada passagem do mouse."""
+    def __init__(self, botao, obter_texto):
+        self.botao, self.obter_texto = botao, obter_texto
+        self.agendamento = self.janela = None
+        botao.bind("<Enter>", self.agendar)
+        botao.bind("<Leave>", self.ocultar)
+        botao.bind("<ButtonPress-1>", self.ocultar)
+        botao.bind("<Destroy>", self.ocultar)
+
+    def agendar(self, event=None):
+        self.ocultar()
+        self.agendamento = self.botao.after(400, self.mostrar)
+
+    def mostrar(self):
+        self.agendamento = None
+        if not self.botao.winfo_exists():
+            return
+        texto = self.obter_texto()
+        janela = self.janela = tk.Toplevel(self.botao)
+        janela.withdraw()
+        janela.overrideredirect(True)
+        janela.attributes("-topmost", True)
+        tk.Label(janela, text=texto, justify="left", wraplength=380,
+                 font=("Segoe UI", 12), background="#fff6cf", foreground="#1a1a1a",
+                 relief="solid", borderwidth=1, padx=10, pady=7).pack()
+        janela.update_idletasks()
+        x, y = self.botao.winfo_pointerxy()
+        x = max(0, min(x + 14, janela.winfo_screenwidth() - janela.winfo_reqwidth() - 8))
+        y = max(0, min(y + 22, janela.winfo_screenheight() - janela.winfo_reqheight() - 8))
+        janela.geometry(f"+{x}+{y}")
+        janela.deiconify()
+
+    def ocultar(self, event=None):
+        if self.agendamento is not None:
+            self.botao.after_cancel(self.agendamento)
+            self.agendamento = None
+        if self.janela is not None:
+            self.janela.destroy()
+            self.janela = None
+
+
 class _AppCotacaoBase(ctk.CTk):
     """Tela principal (base). Os métodos de ação (botões dos 4 grupos)
     vêm dos mixins definidos em Cotacao.py, Mapa.py, AdjudicacaoOrdem.py e
@@ -842,22 +908,22 @@ class _AppCotacaoBase(ctk.CTk):
             e.bind("<ButtonRelease-1>", lambda ev, idx=i: self._selecionar_entrada_cotacao(idx))
             self.entradas_cotacao.append(e)
 
-        ctk.CTkButton(grid_cot, text="⚙ Contatos\nda Ordem", font=("Segoe UI", 11, "bold"),
+        self._criar_botao_com_dica(grid_cot, text="⚙ Contatos\nda Ordem", font=("Segoe UI", 11, "bold"),
                       width=76, height=67, fg_color="#3a3a3a", hover_color="#4a4a4a",
                       command=self._abrir_configuracao_contatos
                       ).grid(row=0, column=5, rowspan=2, padx=(10, 0), pady=3, sticky="ns")
 
-        ctk.CTkButton(grid_cot, text="🔄 Reset /\nAtualizar", font=("Segoe UI", 11, "bold"),
+        self._criar_botao_com_dica(grid_cot, text="🔄 Reset /\nAtualizar", font=("Segoe UI", 11, "bold"),
                       width=76, height=67, fg_color="#3a3a3a", hover_color="#4a4a4a",
                       command=self.acao_resetar_cotacao_ativa
                       ).grid(row=0, column=6, rowspan=2, padx=(6, 0), pady=3, sticky="ns")
 
-        ctk.CTkButton(grid_cot, text="Limpar\nCotações", font=("Segoe UI", 11, "bold"),
+        self._criar_botao_com_dica(grid_cot, text="Limpar\nCotações", font=("Segoe UI", 11, "bold"),
                       width=76, height=67, fg_color="#3a3a3a", hover_color="#4a4a4a",
                       command=self.acao_limpar_cotacoes
                       ).grid(row=0, column=7, rowspan=2, padx=(6, 0), pady=3, sticky="ns")
 
-        ctk.CTkButton(col, text="CONSULTAR COTAÇÃO", font=FONTE_BOTAO,
+        self._criar_botao_com_dica(col, text="CONSULTAR COTAÇÃO", font=FONTE_BOTAO,
                       fg_color=COR_DESTAQUE, height=32,
                       command=self.acao_consultar_cotacao).pack(fill="x", padx=16, pady=(4, 8))
 
@@ -872,7 +938,7 @@ class _AppCotacaoBase(ctk.CTk):
             command=self._on_selecionar_nome_planilha)
         self.combo_planilha.pack(fill="x", padx=16, pady=2)
 
-        ctk.CTkButton(col, text="CONSULTAR MATRIX", font=FONTE_BOTAO,
+        self._criar_botao_com_dica(col, text="CONSULTAR MATRIX", font=FONTE_BOTAO,
                       fg_color=COR_DESTAQUE, height=32,
                       command=self.acao_consultar_matrix).pack(fill="x", padx=16, pady=(4, 8))
 
@@ -915,7 +981,7 @@ class _AppCotacaoBase(ctk.CTk):
             command=self._on_selecionar_operador)
         self.combo_operador.grid(row=0, column=0, sticky="ew")
 
-        ctk.CTkButton(linha_operador, text="🗑", width=36, height=32,
+        self._criar_botao_com_dica(linha_operador, text="🗑", width=36, height=32,
                       font=FONTE_BOTAO, fg_color="#7a2626",
                       command=self._excluir_operador).grid(row=0, column=1, padx=(4, 0))
 
@@ -939,7 +1005,7 @@ class _AppCotacaoBase(ctk.CTk):
             placeholder_text=r"Cole aqui o caminho até ...\GEOF")
         self.entry_pasta_geof.grid(row=0, column=0, sticky="ew")
         self.entry_pasta_geof.bind("<FocusOut>", lambda ev: self._sincronizar_pasta_compartilhada())
-        ctk.CTkButton(linha_pasta, text="Procurar...", width=110, height=32,
+        self._criar_botao_com_dica(linha_pasta, text="Procurar...", width=110, height=32,
                       font=FONTE_BOTAO, command=self._procurar_pasta_geof).grid(row=0, column=1, padx=(6, 0))
         self.label_pasta_dados = ctk.CTkLabel(col, text="Dados compartilhados: selecione a pasta GEOF.",
                                             font=("Segoe UI", 11), wraplength=620, anchor="w")
@@ -983,7 +1049,7 @@ class _AppCotacaoBase(ctk.CTk):
         linha_sis.grid_columnconfigure(0, weight=1)
         self.entry_sis = ctk.CTkEntry(linha_sis, font=FONTE_ENTRY, height=32, state="readonly")
         self.entry_sis.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(linha_sis, text="Copiar", width=80, height=32, font=FONTE_BOTAO,
+        self._criar_botao_com_dica(linha_sis, dica="Copia o SIS para a área de transferência.", text="Copiar", width=80, height=32, font=FONTE_BOTAO,
                       command=lambda: self._copiar_para_area_transferencia(self.entry_sis.get())
                       ).grid(row=0, column=1, padx=(6, 0))
 
@@ -995,7 +1061,7 @@ class _AppCotacaoBase(ctk.CTk):
         linha_sei.grid_columnconfigure(0, weight=1)
         self.entry_sei = ctk.CTkEntry(linha_sei, font=FONTE_ENTRY, height=32, state="readonly")
         self.entry_sei.grid(row=0, column=0, sticky="ew")
-        ctk.CTkButton(linha_sei, text="Copiar", width=80, height=32, font=FONTE_BOTAO,
+        self._criar_botao_com_dica(linha_sei, dica="Copia o número SEI para a área de transferência.", text="Copiar", width=80, height=32, font=FONTE_BOTAO,
                       command=lambda: self._copiar_para_area_transferencia(self.entry_sei.get())
                       ).grid(row=0, column=1, padx=(6, 0))
 
@@ -1029,7 +1095,7 @@ class _AppCotacaoBase(ctk.CTk):
         self.entry_codigo_selecionado = ctk.CTkEntry(linha_codigo, font=FONTE_ENTRY, height=28,
                                                       width=160, state="readonly")
         self.entry_codigo_selecionado.pack(side="left")
-        ctk.CTkButton(linha_codigo, text="Copiar", width=70, height=28, font=FONTE_BOTAO,
+        self._criar_botao_com_dica(linha_codigo, dica="Copia o código do item selecionado para a área de transferência.", text="Copiar", width=70, height=28, font=FONTE_BOTAO,
                       command=lambda: self._copiar_para_area_transferencia(
                           self.entry_codigo_selecionado.get())).pack(side="left", padx=(6, 0))
 
@@ -1127,7 +1193,7 @@ class _AppCotacaoBase(ctk.CTk):
             monitorado = texto in {"CRIAR PASTA COTAÇÃO", "PEDIDO", "LISTAR EMPRESAS",
                                    "INCLUIR EMPRESAS MAPA", "ADJUDICAÇÃO", "ORDEM"}
             acao = (lambda cmd=comando: self._executar_e_atualizar_etapas(cmd)) if monitorado else comando
-            botao = ctk.CTkButton(frame, text=texto, font=FONTE_BOTAO,
+            botao = self._criar_botao_com_dica(frame, text=texto, font=FONTE_BOTAO,
                           fg_color="#1a1a1a", hover_color="#333333",
                           text_color="#ffffff", height=26,
                           command=acao)
@@ -1136,6 +1202,18 @@ class _AppCotacaoBase(ctk.CTk):
                 self._botoes_etapas[texto] = botao
 
         ctk.CTkLabel(frame, text="", height=1).pack(pady=1)  # respiro inferior
+
+    def _texto_dica_botao(self, texto, descricao=None):
+        dica = descricao or DICAS_BOTOES_CONTROLE.get(texto, texto)
+        if texto in self.__dict__.get("_etapas_concluidas", set()):
+            dica += "\n\nAção já executada para a cotação ativa (indicada pela cor do botão)."
+        return dica
+
+    def _criar_botao_com_dica(self, parent, dica=None, **kwargs):
+        botao = ctk.CTkButton(parent, **kwargs)
+        texto = kwargs.get("text", "")
+        botao._dica_acao = DicaBotao(botao, lambda: self._texto_dica_botao(texto, dica))
+        return botao
 
     def _executar_e_atualizar_etapas(self, comando):
         try:
@@ -1194,6 +1272,7 @@ class _AppCotacaoBase(ctk.CTk):
                 concluidos.add("ADJUDICAÇÃO")
             if any(n.startswith(f"ORDEM {codigo} ") and n.lower().endswith(".pdf") for n in arquivos):
                 concluidos.add("ORDEM")
+        self._etapas_concluidas = concluidos
         for texto, botao in botoes.items():
             feito = texto in concluidos
             botao.configure(fg_color="#333333" if feito else "#1a1a1a",

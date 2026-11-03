@@ -24,6 +24,8 @@ class Widget:
         pass
     def configure(self, *args, **kwargs):
         pass
+    def bind(self, *args, **kwargs):
+        pass
 
 
 class Button(Widget):

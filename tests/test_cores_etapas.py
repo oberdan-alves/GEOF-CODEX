@@ -73,6 +73,39 @@ class CoresEtapasTest(unittest.TestCase):
         self.salvar('EMPRESAS_LISTADAS_257.json', [{'invalido': True}])
         self.verificar(set())
 
+    def test_dica_acompanha_estado_da_cor_e_troca_de_cotacao(self):
+        texto = 'PEDIDO'
+        self.verificar(set())
+        descricao = self.app._texto_dica_botao(texto)
+        self.assertIn('Gera o Pedido', descricao)
+        self.assertNotIn('já executada', descricao)
+        (self.pasta / 'PEDIDO DE COTAÇÃO 257 HRG.pdf').touch()
+        self.verificar({'PEDIDO'})
+        self.assertIn('Ação já executada', self.app._texto_dica_botao(texto))
+        self.assertIn(descricao, self.app._texto_dica_botao(texto))
+        self.app.entradas_cotacao[0].get.return_value = '258'
+        self.verificar(set())
+        self.assertEqual(self.app._texto_dica_botao(texto), descricao)
+        self.assertEqual(self.app._texto_dica_botao('Copiar', 'Copia o SIS.'), 'Copia o SIS.')
+
+    def test_dica_cancela_espera_ao_sair_e_apos_clique(self):
+        from GeradorCotacao import DicaBotao
+        botao = Mock()
+        dica = DicaBotao(botao, lambda: 'Ação')
+        eventos = {c.args[0]: c.args[1] for c in botao.bind.call_args_list}
+        eventos['<Enter>']()
+        botao.after.assert_called_once_with(400, dica.mostrar)
+        eventos['<Leave>']()
+        botao.after_cancel.assert_called_once_with(botao.after.return_value)
+        self.assertIsNone(dica.agendamento)
+        dica.janela = Mock()
+        janela = dica.janela
+        eventos['<ButtonPress-1>']()
+        janela.destroy.assert_called_once_with()
+        self.assertIsNone(dica.janela)
+        eventos['<Destroy>']()
+        janela.destroy.assert_called_once_with()
+
     def test_comando_permanece_executavel_e_retorna_resultado(self):
         comando = Mock(return_value='resultado')
         self.assertEqual(self.app._executar_e_atualizar_etapas(comando), 'resultado')
