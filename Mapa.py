@@ -701,7 +701,7 @@ class MapaMixin:
         cabecalho_cols = self.wizard_scroll
         titulos = ["ITEM", "CÓDIGO", "DESCRIÇÃO", "UN", "QTD", "QUANTIDADE", "UNITÁRIO",
                    "TOTAL", "MARCA", "PRAZO"]
-        larguras = [50, 90, 340, 50, 50, 115, 145, 145, 165, 75]
+        larguras = [50, 90, 340, 85, 50, 115, 145, 145, 165, 75]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
             self.wizard_scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
             ctk.CTkLabel(cabecalho_cols, text=t, font=("Segoe UI", 17, "bold"),
@@ -731,9 +731,13 @@ class MapaMixin:
             ctk.CTkLabel(linha, text=formatar_quantidade_proposta(numero_item), font=("Segoe UI", 18), width=45
                          ).grid(row=linha_idx, pady=(4, 0), column=0, padx=4, sticky="n")
             ctk.CTkLabel(linha, text=codigo, font=("Segoe UI", 18), width=80).grid(row=linha_idx, pady=(4, 0), column=1, padx=2, sticky="n")
-            ctk.CTkLabel(linha, text=descricao[:55], font=("Segoe UI", 18), width=340, wraplength=340,
-                         anchor="w", justify="left").grid(row=linha_idx, pady=(4, 0), column=2, padx=2, sticky="nw")
-            ctk.CTkLabel(linha, text=un, font=("Segoe UI", 18), width=40).grid(row=linha_idx, pady=(4, 0), column=3, padx=2, sticky="n")
+            label_descricao = ctk.CTkLabel(linha, text=descricao, font=("Segoe UI", 18),
+                                          width=340, wraplength=340, anchor="w", justify="left")
+            label_descricao.grid(row=linha_idx, pady=(4, 0), column=2, padx=2, sticky="new")
+            # A quebra acompanha a largura real da coluna, inclusive ao maximizar a janela.
+            label_descricao.bind("<Configure>", lambda e, label=label_descricao:
+                label.configure(wraplength=max(1, label._reverse_widget_scaling(label.winfo_width()) - 8)))
+            ctk.CTkLabel(linha, text=un, font=("Segoe UI", 18), width=85).grid(row=linha_idx, pady=(4, 0), column=3, padx=2, sticky="n")
             ctk.CTkLabel(linha, text=formatar_quantidade_proposta(qtd_cotada), font=("Segoe UI", 18), width=40
                          ).grid(row=linha_idx, pady=(4, 0), column=4, padx=2, sticky="n")
 
@@ -996,7 +1000,7 @@ class MapaMixin:
         cabecalho = scroll
         titulos = ["ITEM", "CÓDIGO", "DESCRIÇÃO", "UN", "QTD", "QUANTIDADE", "UNITÁRIO", "TOTAL",
                    "MARCA", "PRAZO"]
-        larguras = [50, 90, 340, 50, 50, 115, 145, 145, 165, 75]
+        larguras = [50, 90, 340, 85, 50, 115, 145, 145, 165, 75]
         for i, (t, w) in enumerate(zip(titulos, larguras)):
             scroll.grid_columnconfigure(i, minsize=w+4, weight=1 if i == 2 else 0)
             ctk.CTkLabel(cabecalho, text=t, font=("Segoe UI", 17, "bold"),
@@ -1005,14 +1009,19 @@ class MapaMixin:
         total_geral = Decimal("0")
         for linha_idx, item in enumerate(itens_com_valor, start=1):
             linha = scroll
-            valores = [formatar_quantidade_proposta(item.get("numero_item")), item["codigo"], item["descricao"][:55],
+            valores = [formatar_quantidade_proposta(item.get("numero_item")), item["codigo"], item["descricao"],
                        item["un"], formatar_quantidade_proposta(item["qtd_cotada"]), formatar_quantidade_proposta(item["quantidade"]),
                        formatar_unitario_proposta(item["unitario"] or 0), formatar_total_proposta(item["total"]),
                        item["marca"], str(item["prazo"] or "")]
             for i, (v, w) in enumerate(zip(valores, larguras)):
-                ctk.CTkLabel(linha, text=v, font=("Segoe UI", 18), width=w,
-                             wraplength=w,
-                             anchor="w" if i == 2 else "center").grid(row=linha_idx, column=i, padx=2, pady=4, sticky="n")
+                label = ctk.CTkLabel(linha, text=v, font=("Segoe UI", 18), width=w,
+                                     wraplength=w, justify="left" if i == 2 else "center",
+                                     anchor="w" if i == 2 else "center")
+                label.grid(row=linha_idx, column=i, padx=2, pady=4,
+                           sticky="new" if i == 2 else "n")
+                if i == 2:
+                    label.bind("<Configure>", lambda e, campo=label:
+                        campo.configure(wraplength=max(1, campo._reverse_widget_scaling(campo.winfo_width()) - 8)))
             total_geral += calcular_total_proposta(item["quantidade"], item["unitario"])
 
         if itens_ocultos:
