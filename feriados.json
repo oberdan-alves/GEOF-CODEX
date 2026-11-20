@@ -13,8 +13,24 @@
       "feriado": "finados"
     },
     {
-      "data": "15/11/2026",
-      "feriado": "proclam"
+      "data": "20/11/2026",
+      "feriado": "Consciência Negra (feriado nacional"
+    },
+    {
+      "data": "30/11/2026",
+      "feriado": "30 de novembro (segunda-feira): Dia do Evangélico (feriado local)."
+    },
+    {
+      "data": "24/12/2026",
+      "feriado": "24 de dezembro (quinta-feira): Véspera do Natal (ponto facultativo após as 14h)"
+    },
+    {
+      "data": "25/12/2026",
+      "feriado": "25 de dezembro (sexta-feira): Natal (feriado nacional)."
+    },
+    {
+      "data": "31/12/2026",
+      "feriado": "31 de dezembro (quinta-feira): Véspera do Ano-Novo (ponto facultativo após as 14h)"
     }
   ]
 }

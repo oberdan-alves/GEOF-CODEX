@@ -67,6 +67,11 @@ from GeradorCotacao import (
 )
 
 # ----------------------------------------------------------------------
+# VERSÃO
+# ----------------------------------------------------------------------
+VERSAO_APP = "Versão 1 de 19/11/2026"
+
+# ----------------------------------------------------------------------
 # OPÇÕES DE PUBLICAÇÃO (1ª a 10ª)
 # ----------------------------------------------------------------------
 PUBLICACOES_DISPONIVEIS = [f"{n}ª PUBLICAÇÃO" for n in range(1, 11)]
@@ -1011,136 +1016,234 @@ class EmailMixin:
                 estado["indice"] += 1
                 redesenhar()
 
-        rodape = ctk.CTkFrame(janela, fg_color="transparent")
-        rodape.pack(pady=(0, 8))
-        ctk.CTkButton(rodape, text="◀ Fornecedor anterior", font=FONTE_BOTAO, height=34,
+        linha_nav = ctk.CTkFrame(janela, fg_color="transparent")
+        linha_nav.pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkButton(linha_nav, text="◀ Anterior", font=FONTE_BOTAO, height=34,
                       command=anterior).pack(side="left", padx=4)
-        ctk.CTkButton(rodape, text="Copiar corpo do e-mail", font=FONTE_BOTAO, height=34,
+        ctk.CTkButton(linha_nav, text="Próximo ▶", font=FONTE_BOTAO, height=34,
+                      command=proximo).pack(side="left", padx=4)
+
+        ctk.CTkButton(janela, text="Copiar corpo do e-mail", font=FONTE_BOTAO, height=34,
                       fg_color=COR_DESTAQUE,
                       command=lambda: self._copiar_para_area_transferencia(
                           emails_gerados[estado["indice"]]["corpo"])
-                      ).pack(side="left", padx=12)
-        ctk.CTkButton(rodape, text="Fornecedor seguinte ▶", font=FONTE_BOTAO, height=34,
-                      command=proximo).pack(side="left", padx=4)
-
+                      ).pack(pady=(0, 8))
         ctk.CTkButton(janela, text="Fechar", font=FONTE_BOTAO, height=34,
                       command=janela.destroy).pack(pady=(0, 16))
 
         redesenhar()
 
     # ==================================================================
-    # FERIADOS — cadastro usado no cálculo do prazo em dias úteis
+    # FERIADOS — cadastro de datas de feriado (usadas nos dias úteis)
     # ==================================================================
     def acao_gerenciar_feriados(self):
-        self._abrir_janela_feriados()
+        """Tela de cadastro, alteração e remoção de feriados.
 
-    def _abrir_janela_feriados(self):
+        Os feriados são persistidos em feriados.json no formato
+        {"feriados": [{"data": "DD/MM/AAAA", "feriado": "descrição"}]}.
+        carregar_feriados() e salvar_feriados() são funções de módulo
+        (GeradorCotacao.py), e obter_datas_feriados() espera exatamente esse
+        formato de registros (não strings).
+        """
+        from tkinter import messagebox as tk_messagebox
+
         janela = ctk.CTkToplevel(self)
-        janela.title("Feriados cadastrados")
+        janela.title("Feriados Cadastrados")
         janela.configure(fg_color=COR_FUNDO_APP)
-        janela.geometry("580x580")
+        janela.geometry("760x620")
         centralizar_janela(janela)
         janela.grab_set()
 
-        ctk.CTkLabel(
-            janela,
-            text="Cadastro de feriados — usados para calcular o prazo de recebimento das "
-                 "propostas em dias úteis no E-mail Cotação (sábados, domingos e as datas "
-                 "abaixo não contam como dia útil).",
-            font=FONTE_SECAO, text_color=COR_TEXTO, wraplength=540, justify="left"
-        ).pack(anchor="w", padx=16, pady=(16, 8))
+        FONTE_SECAO = ctk.CTkFont(size=18, weight="bold")
+        FONTE_TABELA = ctk.CTkFont(size=14)
+        FONTE_ENTRY = ctk.CTkFont(size=14)
+        FONTE_BOTAO = ctk.CTkFont(size=13, weight="bold")
+        try:
+            versao_app = VERSAO_APP
+        except NameError:
+            versao_app = "1.0"
 
-        linha_form = ctk.CTkFrame(janela, fg_color="transparent")
-        linha_form.pack(fill="x", padx=16, pady=(0, 10))
+        registro_em_edicao = {"data_original": None}
 
-        ctk.CTkLabel(linha_form, text="Data:", font=FONTE_TABELA, text_color=COR_TEXTO
-                     ).grid(row=0, column=0, padx=(0, 4))
-        entry_data = ctk.CTkEntry(linha_form, font=FONTE_ENTRY, width=110, height=32,
-                                  placeholder_text="DD/MM/AAAA")
-        entry_data.grid(row=0, column=1, padx=(0, 10))
-        entry_data.bind("<KeyRelease>", lambda e: self._aplicar_mascara_generica(
-            entry_data, formatar_data))
-
-        ctk.CTkLabel(linha_form, text="Feriado:", font=FONTE_TABELA, text_color=COR_TEXTO
-                     ).grid(row=0, column=2, padx=(0, 4))
-        entry_texto = ctk.CTkEntry(linha_form, font=FONTE_ENTRY, width=200, height=32,
-                                   placeholder_text="Ex.: Independência")
-        entry_texto.grid(row=0, column=3, padx=(0, 10))
-
-        scroll = ctk.CTkScrollableFrame(janela, fg_color="#161616", height=380)
-        scroll.pack(fill="both", expand=True, padx=16, pady=(0, 8))
-
-        def redesenhar_lista():
-            for w in scroll.winfo_children():
-                w.destroy()
-            feriados = sorted(carregar_feriados(), key=self._chave_ordenacao_feriado)
-            if not feriados:
-                ctk.CTkLabel(scroll, text="Nenhum feriado cadastrado ainda.",
-                             font=FONTE_TABELA, text_color=COR_TEXTO_SEC
-                             ).pack(anchor="w", padx=8, pady=8)
-                return
-            for feriado in feriados:
-                linha = ctk.CTkFrame(scroll, fg_color="#1f1f1f", corner_radius=6)
-                linha.pack(fill="x", pady=3, padx=2)
-                ctk.CTkLabel(linha, text=feriado.get("data", ""), font=FONTE_TABELA,
-                             text_color=COR_TEXTO, width=90
-                             ).pack(side="left", padx=(8, 6), pady=6)
-                ctk.CTkLabel(linha, text=feriado.get("feriado", ""), font=FONTE_TABELA,
-                             text_color=COR_TEXTO_SEC, anchor="w"
-                             ).pack(side="left", fill="x", expand=True, pady=6)
-                ctk.CTkButton(linha, text="Remover", width=80, height=26, font=FONTE_BOTAO,
-                              fg_color="#7a2626",
-                              command=lambda f=feriado: remover(f)).pack(side="right", padx=8)
-
-        def adicionar():
-            data_texto = entry_data.get().strip()
-            texto = entry_texto.get().strip()
-            if len(data_texto) != 10:
-                messagebox.showwarning("Atenção", "Informe a DATA completa (DD/MM/AAAA).")
-                return
-            if not texto:
-                messagebox.showwarning("Atenção", "Informe uma descrição curta para o feriado.")
-                return
-            feriados = carregar_feriados()
-            feriados.append({"data": data_texto, "feriado": texto})
-            salvar_feriados(feriados)
-            entry_data.delete(0, "end")
-            entry_texto.delete(0, "end")
-            redesenhar_lista()
-
-        def remover(feriado_alvo):
-            feriados = carregar_feriados()
-            feriados = [f for f in feriados
-                       if not (f.get("data") == feriado_alvo.get("data")
-                               and f.get("feriado") == feriado_alvo.get("feriado"))]
-            salvar_feriados(feriados)
-            redesenhar_lista()
-
-        ctk.CTkButton(linha_form, text="Adicionar", font=FONTE_BOTAO, height=32,
-                      fg_color=COR_DESTAQUE, command=adicionar).grid(row=0, column=4, padx=(4, 0))
-
-        redesenhar_lista()
-
-        ctk.CTkButton(janela, text="Fechar", font=FONTE_BOTAO, height=34,
-                      command=janela.destroy).pack(pady=(0, 16))
-
-    @staticmethod
-    def _chave_ordenacao_feriado(feriado):
-        texto = (feriado.get("data") or "").strip()
-        partes = texto.split("/")
-        if len(partes) == 3:
+        def listar_feriados():
+            lista.delete(0, tk.END)
+            registros = carregar_feriados()
+            if not isinstance(registros, list):
+                registros = []
             try:
-                d, m, a = partes
-                return (int(a), int(m), int(d))
-            except ValueError:
+                registros = sorted(
+                    registros,
+                    key=lambda r: datetime.datetime.strptime(r.get("data", ""), "%d/%m/%Y"))
+            except (ValueError, TypeError):
                 pass
-        return (9999, 99, 99)
+            dias_da_semana = ("Segunda", "Terça", "Quarta", "Quinta",
+                            "Sexta", "Sábado", "Domingo")
+            for r in registros:
+                data_feriado = r.get("data", "")
+                try:
+                    dt = datetime.datetime.strptime(data_feriado, "%d/%m/%Y")
+                    dia_semana = dias_da_semana[dt.weekday()]
+                except (ValueError, TypeError):
+                    dia_semana = ""
+                if dia_semana:
+                    item = f"{data_feriado} {dia_semana} - {r.get('feriado', '')}"
+                else:
+                    item = f"{data_feriado} - {r.get('feriado', '')}"
+                lista.insert(tk.END, item)
 
-    @staticmethod
-    def _aplicar_mascara_generica(entry, func_mascara):
-        texto = entry.get()
-        formatado = func_mascara(texto)
-        if formatado != texto:
-            entry.delete(0, "end")
-            entry.insert(0, formatado)
-            entry.icursor("end")
+        def aplicar_mascara(event=None):
+            texto = entry_data.get()
+            digitos = ''.join(ch for ch in texto if ch.isdigit())[:8]
+            novo = ''
+            for i, d in enumerate(digitos):
+                if i in (2, 4):
+                    novo += '/'
+                novo += d
+            if novo != texto:
+                entry_data.delete(0, tk.END)
+                entry_data.insert(0, novo)
+                entry_data.icursor(tk.END)
+
+        def limpar_formulario():
+            registro_em_edicao["data_original"] = None
+            entry_data.delete(0, tk.END)
+            entry_data.insert(0, "DD/MM/AAAA")
+            entry_descricao.delete(0, tk.END)
+            btn_salvar.configure(text="SALVAR")
+            entry_data.focus_set()
+
+        def salvar_formulario():
+            data = entry_data.get().strip()
+            if len(data) != 10:
+                tk_messagebox.showwarning("Data inválida", "Informe a data no formato DD/MM/AAAA.")
+                return
+            try:
+                datetime.datetime.strptime(data, "%d/%m/%Y")
+            except ValueError:
+                tk_messagebox.showwarning("Data inválida", "Data inexistente. Verifique dia, mês e ano.")
+                return
+            descricao = entry_descricao.get().strip()
+            if not descricao:
+                tk_messagebox.showwarning("Descrição obrigatória", "Informe o nome do feriado.")
+                return
+
+            registros = carregar_feriados()
+            data_original = registro_em_edicao["data_original"]
+
+            if any(r.get("data") == data and r.get("data") != data_original for r in registros):
+                tk_messagebox.showinfo("Feriado já cadastrado", f"{data} já está na lista.")
+                return
+
+            if data_original is None:
+                registros.append({"data": data, "feriado": descricao})
+                mensagem = f"Feriado {data} cadastrado."
+            else:
+                for r in registros:
+                    if r.get("data") == data_original:
+                        r["data"] = data
+                        r["feriado"] = descricao
+                        break
+                mensagem = f"Feriado {data} atualizado."
+
+            salvar_feriados(registros)
+            listar_feriados()
+            limpar_formulario()
+            tk_messagebox.showinfo("Sucesso", mensagem)
+
+        def carregar_para_editar():
+            selecionado = lista.curselection()
+            if not selecionado:
+                tk_messagebox.showwarning("Nenhum item", "Selecione um feriado na lista para alterar.")
+                return
+            data = lista.get(selecionado[0])[:10].strip()
+            for r in carregar_feriados():
+                if r.get("data") == data:
+                    registro_em_edicao["data_original"] = data
+                    entry_data.delete(0, tk.END)
+                    entry_data.insert(0, r.get("data", ""))
+                    entry_descricao.delete(0, tk.END)
+                    entry_descricao.insert(0, r.get("feriado", ""))
+                    btn_salvar.configure(text="ATUALIZAR")
+                    break
+
+        def remover_selecionado():
+            selecionado = lista.curselection()
+            if not selecionado:
+                tk_messagebox.showwarning("Nenhum item", "Selecione um feriado na lista para remover.")
+                return
+            texto = lista.get(selecionado[0])
+            data = texto[:10].strip()
+            if not tk_messagebox.askyesno("Confirmar remoção", f"Remover o feriado {texto}?"):
+                return
+            registros = [r for r in carregar_feriados() if r.get("data") != data]
+            salvar_feriados(registros)
+            listar_feriados()
+            if registro_em_edicao["data_original"] == data:
+                limpar_formulario()
+            tk_messagebox.showinfo("Sucesso", f"Feriado {texto} removido.")
+
+        def selecionar_tudo():
+            try:
+                entry_data.select_range(0, tk.END)
+            except Exception:
+                pass
+
+        # ---------------- Layout ----------------
+        ctk.CTkLabel(janela, text="FERIADOS CADASTRADOS", font=FONTE_SECAO,
+                    text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(16, 4))
+        ctk.CTkLabel(janela, text=versao_app, font=FONTE_TABELA,
+                    text_color=COR_TEXTO).pack(anchor="w", padx=16, pady=(0, 12))
+
+        frame_form = ctk.CTkFrame(janela, fg_color="transparent")
+        frame_form.pack(fill="x", padx=16, pady=(0, 10))
+        frame_form.grid_columnconfigure(1, weight=1)
+        frame_form.grid_columnconfigure(3, weight=1)
+
+        ctk.CTkLabel(frame_form, text="Data (DD/MM/AAAA):", font=FONTE_TABELA,
+                    text_color=COR_TEXTO).grid(row=0, column=0, padx=(0, 8), sticky="e")
+        entry_data = ctk.CTkEntry(frame_form, font=FONTE_ENTRY, height=32, width=130)
+        entry_data.grid(row=0, column=1, sticky="w", padx=(0, 16))
+        entry_data.insert(0, "DD/MM/AAAA")
+        entry_data.bind("<KeyRelease>", aplicar_mascara)
+        entry_data.bind("<FocusIn>", lambda e: entry_data.after(0, selecionar_tudo))
+
+        ctk.CTkLabel(frame_form, text="Feriado:", font=FONTE_TABELA,
+                    text_color=COR_TEXTO).grid(row=0, column=2, padx=(0, 8), sticky="e")
+        entry_descricao = ctk.CTkEntry(frame_form, font=FONTE_ENTRY, height=32,
+                                    width=320,
+                                    placeholder_text="Ex.: Natal, Tiradentes...")
+        entry_descricao.grid(row=0, column=3, sticky="ew")
+
+        linha_botoes = ctk.CTkFrame(janela, fg_color="transparent")
+        linha_botoes.pack(fill="x", padx=16, pady=(0, 10))
+        btn_salvar = ctk.CTkButton(linha_botoes, text="SALVAR", font=FONTE_BOTAO, width=120,
+                                height=32, fg_color=COR_DESTAQUE, command=salvar_formulario)
+        btn_salvar.pack(side="left", padx=(0, 8))
+        ctk.CTkButton(linha_botoes, text="ALTERAR SELECIONADO", font=FONTE_BOTAO, width=170,
+                    height=32, command=carregar_para_editar).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(linha_botoes, text="REMOVER", font=FONTE_BOTAO, width=110,
+                    height=32, fg_color="#C0392B", hover_color="#A93226",
+                    command=remover_selecionado).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(linha_botoes, text="CANCELAR", font=FONTE_BOTAO, width=110,
+                    height=32, command=limpar_formulario).pack(side="left")
+
+        frame_lista = ctk.CTkFrame(janela, fg_color="#1f1f1f")
+        frame_lista.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
+        scroll = tk.Scrollbar(frame_lista, orient="vertical")
+        scroll.pack(side="right", fill="y")
+
+        lista = tk.Listbox(
+            frame_lista, font=FONTE_TABELA, yscrollcommand=scroll.set,
+            bg="#1f1f1f", fg=COR_TEXTO, selectbackground=COR_DESTAQUE,
+            selectforeground="#000000", borderwidth=0, highlightthickness=0,
+            activestyle="none")
+        lista.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=6)
+        scroll.config(command=lista.yview)
+        lista.bind("<Double-1>", lambda e: carregar_para_editar())
+
+        listar_feriados()
+
+
+        recarregar_lista()
+        janela.protocol("WM_DELETE_WINDOW", janela.destroy)

@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(r"G:\Meu Drive\python\GeradorCotacao")
+REPO = Path(r"G:\Meu Drive\Planilhas Geradoras Cotação Pagamento Prestação\GeradorCotacao")
 
 
 def executar(comando, verificar=True):
